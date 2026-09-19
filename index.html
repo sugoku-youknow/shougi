@@ -304,9 +304,10 @@
   <p class="sub">手番なし。駒ごとにクールダウンがあり、動かした直後だけ少し待てば、あとは好きなタイミングで自由に指せます。相手の玉を取ったら勝ちです。</p>
 
   <div class="controls" id="netPanel">
+    <button class="action" id="createRoomBtn" style="flex:none;padding:8px 12px;">部屋を作る</button>
     <label for="roomInput">部屋番号</label>
-    <input type="text" id="roomInput" placeholder="例: sakura42" style="flex:1;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:.8rem;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);">
-    <button class="action" id="connectBtn" style="flex:none;padding:8px 12px;">接続</button>
+    <input type="text" id="roomInput" inputmode="numeric" autocomplete="off" placeholder="4桁の番号" style="flex:1;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:.8rem;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);">
+    <button class="action" id="connectBtn" style="flex:none;padding:8px 12px;">入室</button>
   </div>
   <div class="btnrow" id="inviteRow" style="display:none;">
     <button class="action" id="inviteBtn">招待リンクをコピー</button>
@@ -376,7 +377,7 @@
   cooldownVal.textContent = parseFloat(cooldownInput.value).toFixed(1)+'秒';
 
   let board, hands, selected, dropSelection, gameOver, winnerColor=null, cells=[];
-  let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false;
+  let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false, roomCreator=false;
   let syncSeq=0, lastAppliedSeq=-1;
 
   function freshBoard(){
@@ -528,7 +529,7 @@
       if(sr===r&&sc===c){ clearSelection(); return; }
       const moves = legalMovesFor(sr,sc,board).filter(m=>m.r===r&&m.c===c);
       if(moves.length){
-        attemptAction({kind:'move',sr,sc,dr:r,dc:c});
+        attemptAction({kind:'move',owner:board[sr][sc].owner,sr,sc,dr:r,dc:c});
         selected=null;
         renderAll();
         return;
@@ -798,6 +799,7 @@
   // moment, and avoids relying on the two devices' clocks agreeing on cooldowns.
   const netStatusEl = document.getElementById('netStatus');
   const roomInput = document.getElementById('roomInput');
+  const createRoomBtn = document.getElementById('createRoomBtn');
   const connectBtn = document.getElementById('connectBtn');
   const inviteBtn = document.getElementById('inviteBtn');
   const inviteRow = document.getElementById('inviteRow');
@@ -805,12 +807,14 @@
   // Validates + applies one action to the single authoritative board.
   // Used directly for local/offline play, and by the host for both its own
   // clicks and requests coming in from the other peer.
-  function applyActionAsHost(action){
+  function applyActionAsHost(action, actorColor=myColor){
     switch(action.kind){
       case 'move': {
-        const {sr,sc,dr,dc} = action;
+        const {sr,sc,dr,dc,owner} = action;
         const p = board[sr] && board[sr][sc];
-        if(!p || isCooling(p)) return false;
+        // クールダウンは「動かした駒だけ」に適用する。
+        // さらに、オンラインでは自分の駒以外を動かせないようにする。
+        if(!p || p.owner!==owner || p.owner!==actorColor || isCooling(p)) return false;
         const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
         if(!legal) return false;
         movePiece(sr,sc,dr,dc);
@@ -818,7 +822,7 @@
       }
       case 'drop': {
         const {owner,type,r,c} = action;
-        if(!hands[owner] || !hands[owner][type]) return false;
+        if(owner!==actorColor || !hands[owner] || !hands[owner][type]) return false;
         if(!dropIsLegal(owner,type,r,c)) return false;
         performDrop(owner,type,r,c);
         return true;
@@ -903,7 +907,7 @@
     if(!data || !data.kind) return;
     if(data.kind==='request'){
       if(isHost){
-        const applied = applyActionAsHost(data.action);
+        const applied = applyActionAsHost(data.action, 'gote');
         if(applied) broadcastSync();
       }
       return;
@@ -930,44 +934,65 @@
       : ('あなたは'+label+'です。相手の再接続を待っています…');
   }
 
+  function generateRoomNumber(){
+    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 10000;
+    return String(n).padStart(4,'0');
+  }
+
+  async function createRoom(){
+    if(netActive) return;
+    roomCreator = true;
+    roomInput.value = generateRoomNumber();
+    await connectRoom();
+  }
+
   async function connectRoom(){
     const code = roomInput.value.trim();
-    if(!code){ netStatusEl.textContent='部屋番号を入力してください'; return; }
+    if(!/^\d{4}$/.test(code)){
+      netStatusEl.textContent='部屋番号は4桁の数字で入力してください';
+      return;
+    }
     connectBtn.disabled = true;
-    netStatusEl.textContent = '接続中…';
+    createRoomBtn.disabled = true;
+    netStatusEl.textContent = roomCreator ? '部屋を作成しています…' : '入室しています…';
     try{
-      const {joinRoom, selfId} = await import('https://cdn.jsdelivr.net/npm/trystero/+esm');
+      const {joinRoom} = await import('https://cdn.jsdelivr.net/npm/trystero/+esm');
       netRoom = joinRoom({appId:'jp-freetime-shogi-v1'}, code);
       const [sendAct, getAct] = netRoom.makeAction('act');
       netSend = sendAct;
       getAct((data)=>{ handleRemote(data); });
+
+      // 部屋を作った側を必ず先手・ホストにする。
+      myColor = roomCreator ? 'sente' : 'gote';
+      isHost = roomCreator;
+      colorAssigned = true;
+      netActive = true;
+
       let peerCount = 0;
-      netRoom.onPeerJoin((peerId)=>{
+      netRoom.onPeerJoin(()=>{
         peerCount++;
-        if(!colorAssigned){
-          myColor = (selfId < peerId) ? 'sente' : 'gote';
-          colorAssigned = true;
-          isHost = (myColor === 'sente');
-          if(isHost) broadcastSync();
-        }
+        if(isHost) broadcastSync();
         updateNetStatus(peerCount);
       });
       netRoom.onPeerLeave(()=>{
         peerCount = Math.max(0, peerCount-1);
         updateNetStatus(peerCount);
       });
-      netActive = true;
+
       roomInput.disabled = true;
-      connectBtn.textContent = '接続済み';
+      connectBtn.textContent = '入室済み';
       inviteRow.style.display = 'flex';
       updateNetStatus(0);
     }catch(e){
       netStatusEl.textContent = '接続に失敗しました。通信環境を確認してもう一度お試しください。';
       connectBtn.disabled = false;
+      createRoomBtn.disabled = false;
+      roomCreator = false;
     }
   }
 
-  connectBtn.addEventListener('click', connectRoom);
+  createRoomBtn.addEventListener('click', createRoom);
+  connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
   inviteBtn.addEventListener('click', async ()=>{
     const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
     try{
@@ -981,6 +1006,7 @@
   const urlParams = new URLSearchParams(location.search);
   const initialRoom = urlParams.get('room');
   if(initialRoom){
+    roomCreator = false;
     roomInput.value = initialRoom;
   }
 
