@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>フリータイム将棋</title>
+<style>
+  :root{
+    --wood:#E4C596;
+    --wood-dark:#C79E64;
+    --board-line:#5A3A22;
+    --board-frame:#7A4B26;
+    --bg:#F6EFE3;
+    --ink:#2A2320;
+    --sente-piece:#F3E3C4;
+    --sente-text:#1C1712;
+    --gote-piece:#3A2A22;
+    --gote-text:#F0DAB8;
+    --accent:#A6432A;
+    --accent-soft:#D98A5F;
+    --panel:#EFE3CC;
+    --panel-border:#C9AE7E;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none;
+  }
+  .wrap{
+    max-width:460px;
+    margin:0 auto;
+    padding:14px 12px 28px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+  }
+  h1{
+    font-size:1.15rem;
+    font-weight:600;
+    letter-spacing:.08em;
+    margin:2px 0 0;
+    color:var(--ink);
+  }
+  .sub{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+    font-size:.72rem;
+    color:#7A6A55;
+    margin:0 0 4px;
+    text-align:center;
+    line-height:1.5;
+  }
+  .hand{
+    width:100%;
+    max-width:400px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 8px;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    min-height:44px;
+  }
+  .hand-label{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+    font-size:.68rem;
+    color:#7A6A55;
+    width:34px;
+    flex-shrink:0;
+    letter-spacing:.03em;
+  }
+  .hand-pieces{
+    display:flex;
+    gap:5px;
+    flex-wrap:wrap;
+    flex:1;
+  }
+  .hand-piece{
+    position:relative;
+    width:32px;
+    height:34px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));
+  }
+  .hand-piece.empty{visibility:hidden;}
+  .hand-piece .pent{width:30px;height:32px;font-size:.95rem;}
+  .hand-piece .badge{
+    position:absolute;
+    bottom:-4px;
+    right:-4px;
+    background:var(--accent);
+    color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.6rem;
+    font-weight:700;
+    border-radius:50%;
+    width:15px;
+    height:15px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    line-height:1;
+  }
+  .hand-piece.selected .pent{outline:2px solid var(--accent);outline-offset:1px;border-radius:3px;}
+
+  .board-frame{
+    position:relative;
+    padding:10px;
+    background:var(--board-frame);
+    border-radius:6px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 0 0 2px rgba(0,0,0,.15);
+  }
+  .board{
+    position:relative;
+    width:min(88vw,342px);
+    height:min(88vw,342px);
+    background:var(--wood);
+    background-image:linear-gradient(135deg, var(--wood) 0%, var(--wood-dark) 100%);
+    display:grid;
+    grid-template-columns:repeat(9,1fr);
+    grid-template-rows:repeat(9,1fr);
+  }
+  .cell{
+    position:relative;
+    border-right:1px solid var(--board-line);
+    border-bottom:1px solid var(--board-line);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .cell:nth-child(9n){border-right:none;}
+  .cell:nth-child(n+73){border-bottom:none;}
+  .cell.legal::after{
+    content:"";
+    position:absolute;
+    width:22%;
+    height:22%;
+    border-radius:50%;
+    background:rgba(166,67,42,.55);
+  }
+  .cell.legal-capture::after{
+    content:"";
+    position:absolute;
+    inset:8%;
+    border-radius:50%;
+    background:transparent;
+    border:3px solid rgba(166,67,42,.65);
+  }
+
+  .piece{
+    position:relative;
+    width:88%;
+    height:88%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    user-select:none;
+    transition:transform .1s ease;
+  }
+  .piece.disabled{cursor:default;}
+  .piece.selected{transform:scale(1.08);}
+  .pent{
+    width:100%;
+    height:100%;
+    clip-path:polygon(50% 0%, 100% 22%, 100% 100%, 0% 100%, 0% 22%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:min(4.6vw,17px);
+    font-weight:700;
+    line-height:1;
+    letter-spacing:-1px;
+  }
+  .owner-sente .pent{
+    background:linear-gradient(180deg,#F7EAC8,#E9D19E);
+    color:var(--sente-text);
+    box-shadow:inset 0 0 0 1px #8a6a3a;
+  }
+  .owner-gote .pent{
+    background:linear-gradient(180deg,#4A362B,#2C1F19);
+    color:var(--gote-text);
+    box-shadow:inset 0 0 0 1px #000;
+    transform:rotate(180deg);
+  }
+  .owner-gote{transform:none;}
+
+  .cooldown-ring{
+    position:absolute;
+    inset:0;
+    border-radius:4px;
+    background:conic-gradient(rgba(0,0,0,.55) var(--pct,0%), transparent 0);
+    pointer-events:none;
+    mix-blend-mode:normal;
+  }
+  .piece.cooling .pent{opacity:.55;}
+
+  .controls{
+    width:100%;
+    max-width:400px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:8px 12px;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+  }
+  .controls label{font-size:.72rem;color:#7A6A55;white-space:nowrap;}
+  .controls input[type=range]{flex:1;accent-color:var(--accent);}
+  .controls .val{font-size:.72rem;width:34px;text-align:right;color:var(--ink);}
+  .btnrow{display:flex;gap:8px;width:100%;max-width:400px;}
+  button.action{
+    flex:1;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+    font-size:.78rem;
+    padding:9px 10px;
+    border-radius:8px;
+    border:1px solid var(--panel-border);
+    background:#fff;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  button.action:active{background:var(--panel);}
+
+  .status{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+    font-size:.75rem;
+    color:#7A6A55;
+    min-height:16px;
+    text-align:center;
+  }
+
+  .overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(20,14,10,.72);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:20;
+  }
+  .overlay.show{display:flex;}
+  .win-card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:14px;
+    padding:26px 30px;
+    text-align:center;
+    max-width:280px;
+  }
+  .win-card .big{
+    font-size:1.3rem;
+    font-weight:700;
+    margin-bottom:6px;
+  }
+  .win-card p{
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.78rem;
+    color:#6A5A45;
+    margin:0 0 16px;
+  }
+  .win-card button{
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:10px 22px;
+    border-radius:8px;
+    font-size:.85rem;
+    cursor:pointer;
+  }
+
+  .drop-hint{
+    position:fixed;
+    left:50%;
+    bottom:18px;
+    transform:translateX(-50%);
+    background:var(--accent);
+    color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.72rem;
+    padding:7px 14px;
+    border-radius:20px;
+    display:none;
+    z-index:10;
+  }
+  .drop-hint.show{display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>フリータイム将棋</h1>
+  <p class="sub">手番なし。駒ごとにクールダウンがあり、動かした直後だけ少し待てば、あとは好きなタイミングで自由に指せます。相手の玉を取ったら勝ちです。</p>
+
+  <div class="controls" id="netPanel">
+    <label for="roomInput">部屋番号</label>
+    <input type="text" id="roomInput" placeholder="例: sakura42" style="flex:1;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:.8rem;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);">
+    <button class="action" id="connectBtn" style="flex:none;padding:8px 12px;">接続</button>
+  </div>
+  <div class="btnrow" id="inviteRow" style="display:none;">
+    <button class="action" id="inviteBtn">招待リンクをコピー</button>
+  </div>
+  <div class="status" id="netStatus">未接続（この端末だけで2人プレイできます）</div>
+
+  <div class="hand" id="handGote">
+    <div class="hand-label">後手</div>
+    <div class="hand-pieces" id="handGotePieces"></div>
+  </div>
+
+  <div class="board-frame">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="hand" id="handSente">
+    <div class="hand-label">先手</div>
+    <div class="hand-pieces" id="handSentePieces"></div>
+  </div>
+
+  <div class="controls">
+    <label for="cooldown">クールダウン</label>
+    <input type="range" id="cooldown" min="0" max="8" step="0.5" value="2.5">
+    <div class="val" id="cooldownVal">2.5秒</div>
+  </div>
+  <div class="btnrow">
+    <button class="action" id="restartBtn">最初から</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="drop-hint" id="dropHint">持ち駒を打つマスを選んでください</div>
+
+<div class="overlay" id="overlay">
+  <div class="win-card">
+    <div class="big" id="winText">勝利</div>
+    <p>玉を取ったチームの勝ちです。</p>
+    <button id="playAgain">もう一度遊ぶ</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ROWS=9, COLS=9;
+  const KANJI={
+    P:'歩', L:'香', N:'桂', S:'銀', G:'金', B:'角', R:'飛', K:'王',
+    '+P':'と', '+L':'成香', '+N':'成桂', '+S':'成銀', '+B':'馬', '+R':'龍'
+  };
+  // second king glyph for gote so both sides read distinctly
+  function kingGlyph(owner){ return owner==='sente' ? '王' : '玉'; }
+
+  const boardEl=document.getElementById('board');
+  const statusEl=document.getElementById('status');
+  const overlayEl=document.getElementById('overlay');
+  const winText=document.getElementById('winText');
+  const dropHint=document.getElementById('dropHint');
+  const cooldownInput=document.getElementById('cooldown');
+  const cooldownVal=document.getElementById('cooldownVal');
+  const handSenteEl=document.getElementById('handSentePieces');
+  const handGoteEl=document.getElementById('handGotePieces');
+
+  let cooldownMs = parseFloat(cooldownInput.value)*1000;
+  cooldownInput.addEventListener('input',()=>{
+    cooldownMs = parseFloat(cooldownInput.value)*1000;
+    cooldownVal.textContent = parseFloat(cooldownInput.value).toFixed(1)+'秒';
+  });
+  cooldownVal.textContent = parseFloat(cooldownInput.value).toFixed(1)+'秒';
+
+  let board, hands, selected, dropSelection, gameOver, winnerColor=null, cells=[];
+  let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false;
+  let syncSeq=0, lastAppliedSeq=-1;
+
+  function freshBoard(){
+    const b = Array.from({length:ROWS},()=>Array(COLS).fill(null));
+    const backRow = ['L','N','S','G','K','G','S','N','L'];
+    for(let c=0;c<COLS;c++){
+      b[0][c] = {type:backRow[c], owner:'gote', promoted:false, cooldownUntil:0};
+      b[8][c] = {type:backRow[c], owner:'sente', promoted:false, cooldownUntil:0};
+    }
+    b[1][1] = {type:'R', owner:'gote', promoted:false, cooldownUntil:0};
+    b[1][7] = {type:'B', owner:'gote', promoted:false, cooldownUntil:0};
+    b[7][1] = {type:'B', owner:'sente', promoted:false, cooldownUntil:0};
+    b[7][7] = {type:'R', owner:'sente', promoted:false, cooldownUntil:0};
+    for(let c=0;c<COLS;c++){
+      b[2][c] = {type:'P', owner:'gote', promoted:false, cooldownUntil:0};
+      b[6][c] = {type:'P', owner:'sente', promoted:false, cooldownUntil:0};
+    }
+    return b;
+  }
+
+  function init(){
+    board = freshBoard();
+    hands = { sente:{P:0,L:0,N:0,S:0,G:0,B:0,R:0}, gote:{P:0,L:0,N:0,S:0,G:0,B:0,R:0} };
+    selected = null;       // {r,c}
+    dropSelection = null;  // {owner, type}
+    gameOver = false;
+    winnerColor = null;
+    lastMovedForPromotionOffer = null;
+    overlayEl.classList.remove('show');
+    dropHint.classList.remove('show');
+    statusEl.textContent='';
+    buildBoardDom();
+    renderAll();
+  }
+
+  function buildBoardDom(){
+    boardEl.innerHTML='';
+    cells=[];
+    for(let r=0;r<ROWS;r++){
+      const rowArr=[];
+      for(let c=0;c<COLS;c++){
+        const cell=document.createElement('div');
+        cell.className='cell';
+        cell.dataset.r=r; cell.dataset.c=c;
+        cell.addEventListener('click',()=>onCellClick(r,c));
+        boardEl.appendChild(cell);
+        rowArr.push(cell);
+      }
+      cells.push(rowArr);
+    }
+  }
+
+  function isPromotedType(t){ return t.startsWith('+'); }
+  function baseType(piece){ return piece.promoted ? '+'+piece.type : piece.type; }
+
+  function dir(owner){ return owner==='sente' ? -1 : 1; }
+  function inZone(owner,r){
+    return owner==='sente' ? r<=2 : r>=6;
+  }
+  function lastRow(owner){ return owner==='sente' ? 0 : 8; }
+  function lastTwoRows(owner){ return owner==='sente' ? [0,1] : [7,8]; }
+
+  function slideMoves(r,c,owner,directions,board){
+    const moves=[];
+    for(const [dr,dc] of directions){
+      let nr=r+dr, nc=c+dc;
+      while(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS){
+        const occ=board[nr][nc];
+        if(!occ){ moves.push({r:nr,c:nc,capture:false}); }
+        else{
+          if(occ.owner!==owner) moves.push({r:nr,c:nc,capture:true});
+          break;
+        }
+        nr+=dr; nc+=dc;
+      }
+    }
+    return moves;
+  }
+  function stepMoves(r,c,owner,deltas,board){
+    const moves=[];
+    for(const [dr,dc] of deltas){
+      const nr=r+dr, nc=c+dc;
+      if(nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
+      const occ=board[nr][nc];
+      if(!occ) moves.push({r:nr,c:nc,capture:false});
+      else if(occ.owner!==owner) moves.push({r:nr,c:nc,capture:true});
+    }
+    return moves;
+  }
+
+  function goldDeltas(d){ return [[d,-1],[d,0],[d,1],[0,-1],[0,1],[-d,0]]; }
+
+  function legalMovesFor(r,c,board){
+    const p=board[r][c];
+    if(!p) return [];
+    const d=dir(p.owner);
+    const key = p.promoted ? '+'+p.type : p.type;
+    switch(key){
+      case 'P': return stepMoves(r,c,p.owner,[[d,0]],board);
+      case 'L': return slideMoves(r,c,p.owner,[[d,0]],board);
+      case 'N': return stepMoves(r,c,p.owner,[[2*d,-1],[2*d,1]],board);
+      case 'S': return stepMoves(r,c,p.owner,[[d,-1],[d,0],[d,1],[-d,-1],[-d,1]],board);
+      case 'G': case '+P': case '+L': case '+N': case '+S':
+        return stepMoves(r,c,p.owner,goldDeltas(d),board);
+      case 'B': return slideMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board);
+      case 'R': return slideMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board);
+      case '+B': return slideMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board)
+                  .concat(stepMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board));
+      case '+R': return slideMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board)
+                  .concat(stepMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board));
+      case 'K': return stepMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],board);
+    }
+    return [];
+  }
+
+  function mustPromote(type,owner,destR){
+    if(type==='P'||type==='L') return destR===lastRow(owner);
+    if(type==='N') return lastTwoRows(owner).includes(destR);
+    return false;
+  }
+  function canPromote(type){ return !['G','K'].includes(type); }
+
+  function now(){ return performance.now(); }
+  function isCooling(p){ return p.cooldownUntil > now(); }
+
+  function onCellClick(r,c){
+    if(gameOver) return;
+    const clicked = board[r][c];
+
+    // dropping a hand piece
+    if(dropSelection){
+      const {owner,type} = dropSelection;
+      if(clicked){ // can't drop on occupied square, but allow re-selecting own piece instead
+        cancelDrop();
+        if(clicked.owner && !isCooling(clicked) && isMine(clicked.owner)) selectSquare(r,c);
+        return;
+      }
+      if(!dropIsLegal(owner,type,r,c)){
+        flashStatus('そこには打てません');
+        return;
+      }
+      attemptAction({kind:'drop',owner,type,r,c});
+      cancelDrop();
+      return;
+    }
+
+    if(selected){
+      const {r:sr,c:sc}=selected;
+      if(sr===r&&sc===c){ clearSelection(); return; }
+      const moves = legalMovesFor(sr,sc,board).filter(m=>m.r===r&&m.c===c);
+      if(moves.length){
+        attemptAction({kind:'move',sr,sc,dr:r,dc:c});
+        selected=null;
+        renderAll();
+        return;
+      }
+      // clicking another of own pieces switches selection
+      if(clicked && clicked.owner===board[sr][sc].owner && !isCooling(clicked) && isMine(clicked.owner)){
+        selectSquare(r,c);
+        return;
+      }
+      clearSelection();
+      return;
+    }
+
+    if(clicked && !isMine(clicked.owner)){
+      flashStatus('相手の駒は動かせません');
+      return;
+    }
+    if(clicked && !isCooling(clicked)){
+      selectSquare(r,c);
+    } else if(clicked && isCooling(clicked)){
+      flashStatus('この駒はクールダウン中です');
+    }
+  }
+
+  function isMine(owner){ return myColor===null || myColor===owner; }
+
+  function selectSquare(r,c){
+    selected={r,c};
+    renderAll();
+  }
+  function clearSelection(){
+    selected=null;
+    renderAll();
+  }
+  function cancelDrop(){
+    dropSelection=null;
+    dropHint.classList.remove('show');
+    renderHands();
+  }
+
+  function movePiece(sr,sc,dr,dc){
+    const p = board[sr][sc];
+    const target = board[dr][dc];
+    if(target){
+      const capturedIsKing = target.type==='K';
+      const capturedBase = target.type;
+      hands[p.owner][capturedBase] = (hands[p.owner][capturedBase]||0)+1;
+      if(capturedIsKing){
+        board[dr][dc]=null;
+        board[sr][sc]=null;
+        finishMove(p,dr,dc,sr,sc);
+        endGame(p.owner);
+        return;
+      }
+    }
+    finishMove(p,dr,dc,sr,sc);
+  }
+
+  function finishMove(p,dr,dc,sr,sc){
+    board[sr][sc]=null;
+    let promoted = p.promoted;
+    if(!promoted && canPromote(p.type)){
+      const enteringZone = inZone(p.owner,dr) || inZone(p.owner,sr);
+      if(mustPromote(p.type,p.owner,dr)){
+        promoted = true;
+      } else if(enteringZone){
+        // non-blocking async choice; place piece first, unpromoted by default,
+        // then offer a quick promote toggle via double-tap style follow-up
+        promoted = false;
+      }
+    }
+    p.promoted = promoted;
+    p.cooldownUntil = now()+cooldownMs;
+    board[dr][dc]=p;
+    selected=null;
+    lastMovedForPromotionOffer = (!promoted && canPromote(p.type) && (inZone(p.owner,dr)||inZone(p.owner,sr))) ? {r:dr,c:dc} : null;
+    renderAll();
+    checkKingCapture();
+  }
+
+  let lastMovedForPromotionOffer=null;
+
+  function checkKingCapture(){
+    // safety net: scan board for missing kings in case of edge cases
+    let senteKing=false, goteKing=false;
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      const p=board[r][c];
+      if(p&&p.type==='K'){ if(p.owner==='sente') senteKing=true; else goteKing=true; }
+    }
+    if(!senteKing) endGame('gote');
+    else if(!goteKing) endGame('sente');
+  }
+
+  function endGame(winner){
+    gameOver=true;
+    winnerColor=winner;
+    winText.textContent = (winner==='sente' ? '先手の勝ち！' : '後手の勝ち！');
+    overlayEl.classList.add('show');
+  }
+
+  function dropIsLegal(owner,type,r,c){
+    if(board[r][c]) return false;
+    if(type==='P'){
+      if(r===lastRow(owner)) return false;
+      for(let rr=0;rr<ROWS;rr++){
+        const q=board[rr][c];
+        if(q && q.owner===owner && q.type==='P' && !q.promoted) return false;
+      }
+      return true;
+    }
+    if(type==='L'){ return r!==lastRow(owner); }
+    if(type==='N'){ return !lastTwoRows(owner).includes(r); }
+    return true;
+  }
+
+  function performDrop(owner,type,r,c){
+    board[r][c] = {type, owner, promoted:false, cooldownUntil: now()+cooldownMs};
+    hands[owner][type]--;
+    renderAll();
+    checkKingCapture();
+  }
+
+  function performPromote(r,c){
+    const p = board[r][c];
+    if(p){ p.promoted = true; }
+    if(lastMovedForPromotionOffer && lastMovedForPromotionOffer.r===r && lastMovedForPromotionOffer.c===c){
+      lastMovedForPromotionOffer=null;
+    }
+    renderAll();
+  }
+
+  function flashStatus(msg){
+    statusEl.textContent = msg;
+    clearTimeout(flashStatus._t);
+    flashStatus._t = setTimeout(()=>{ if(statusEl.textContent===msg) statusEl.textContent=''; }, 1400);
+  }
+
+  function pieceGlyph(p){
+    if(p.type==='K') return kingGlyph(p.owner);
+    const key = p.promoted ? '+'+p.type : p.type;
+    return KANJI[key];
+  }
+
+  function renderAll(){
+    renderBoard();
+    renderHands();
+  }
+
+  function renderBoard(){
+    let legalSet = [];
+    if(selected){
+      legalSet = legalMovesFor(selected.r,selected.c,board);
+    }
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        const cellEl = cells[r][c];
+        cellEl.classList.remove('legal','legal-capture');
+        cellEl.innerHTML='';
+        const p = board[r][c];
+        const lm = legalSet.find(m=>m.r===r&&m.c===c);
+        if(lm){ cellEl.classList.add(lm.capture?'legal-capture':'legal'); }
+        if(p){
+          const pieceEl=document.createElement('div');
+          pieceEl.className = 'piece owner-'+p.owner;
+          if(selected && selected.r===r && selected.c===c) pieceEl.classList.add('selected');
+          const cooling = isCooling(p);
+          if(cooling) pieceEl.classList.add('cooling');
+          const pent=document.createElement('div');
+          pent.className='pent';
+          pent.textContent = pieceGlyph(p);
+          pieceEl.appendChild(pent);
+          if(cooling){
+            const ring=document.createElement('div');
+            ring.className='cooldown-ring';
+            const remaining = p.cooldownUntil-now();
+            const pct = Math.max(0,Math.min(100, (remaining/cooldownMs)*100));
+            ring.style.setProperty('--pct',pct+'%');
+            pieceEl.appendChild(ring);
+          }
+          // offer promotion tap: if this square is eligible and unpromoted, a small tap-again toggles promote
+          if(lastMovedForPromotionOffer && lastMovedForPromotionOffer.r===r && lastMovedForPromotionOffer.c===c){
+            pieceEl.title='もう一度タップすると成れます';
+            pieceEl.addEventListener('click',promoteHandlerOnce, {once:true, capture:true});
+          }
+          cellEl.appendChild(pieceEl);
+        }
+      }
+    }
+  }
+
+  function promoteHandlerOnce(e){
+    e.stopPropagation();
+    if(!lastMovedForPromotionOffer) return;
+    const {r,c} = lastMovedForPromotionOffer;
+    attemptAction({kind:'promote', r, c});
+  }
+
+  function renderHands(){
+    handSenteEl.innerHTML='';
+    handGoteEl.innerHTML='';
+    renderHandSide('sente',handSenteEl);
+    renderHandSide('gote',handGoteEl);
+  }
+  function renderHandSide(owner,container){
+    const order=['R','B','G','S','N','L','P'];
+    for(const type of order){
+      const count = hands[owner][type];
+      const el=document.createElement('div');
+      el.className='hand-piece'+(count<=0?' empty':'');
+      if(dropSelection && dropSelection.owner===owner && dropSelection.type===type) el.classList.add('selected');
+      const pent=document.createElement('div');
+      pent.className='pent';
+      pent.style.background = owner==='sente' ? 'linear-gradient(180deg,#F7EAC8,#E9D19E)' : 'linear-gradient(180deg,#4A362B,#2C1F19)';
+      pent.style.color = owner==='sente' ? 'var(--sente-text)' : 'var(--gote-text)';
+      pent.style.clipPath='polygon(50% 0%, 100% 22%, 100% 100%, 0% 100%, 0% 22%)';
+      pent.style.boxShadow='inset 0 0 0 1px rgba(0,0,0,.35)';
+      pent.textContent = KANJI[type];
+      el.appendChild(pent);
+      if(count>0){
+        const badge=document.createElement('div');
+        badge.className='badge';
+        badge.textContent=count;
+        el.appendChild(badge);
+      }
+      el.addEventListener('click',()=>{
+        if(gameOver) return;
+        if(count<=0) return;
+        if(!isMine(owner)){ flashStatus('相手の持ち駒は打てません'); return; }
+        clearSelection();
+        if(dropSelection && dropSelection.owner===owner && dropSelection.type===type){
+          cancelDrop();
+          return;
+        }
+        dropSelection = {owner,type};
+        dropHint.classList.add('show');
+        renderHands();
+      });
+      container.appendChild(el);
+    }
+  }
+
+  function localRestart(){
+    attemptAction({kind:'restart'});
+  }
+  document.getElementById('restartBtn').addEventListener('click',localRestart);
+  document.getElementById('playAgain').addEventListener('click',localRestart);
+
+  // animate cooldown rings smoothly
+  function tick(){
+    if(!gameOver){
+      let needsRender=false;
+      for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+        const p=board[r][c];
+        if(p && p.cooldownUntil>0 && p.cooldownUntil>now()){ needsRender=true; }
+      }
+      if(needsRender) renderBoard();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ---- online play (Trystero: serverless WebRTC, works from GitHub Pages) ----
+  // Architecture: one peer is the "host" (deterministically = whoever is sente).
+  // The host runs the one true copy of the game and is the only one who ever
+  // mutates board/hands directly. The other peer only *requests* actions and
+  // renders whatever the host broadcasts. This avoids the two independent
+  // copies of state drifting apart when both players act at nearly the same
+  // moment, and avoids relying on the two devices' clocks agreeing on cooldowns.
+  const netStatusEl = document.getElementById('netStatus');
+  const roomInput = document.getElementById('roomInput');
+  const connectBtn = document.getElementById('connectBtn');
+  const inviteBtn = document.getElementById('inviteBtn');
+  const inviteRow = document.getElementById('inviteRow');
+
+  // Validates + applies one action to the single authoritative board.
+  // Used directly for local/offline play, and by the host for both its own
+  // clicks and requests coming in from the other peer.
+  function applyActionAsHost(action){
+    switch(action.kind){
+      case 'move': {
+        const {sr,sc,dr,dc} = action;
+        const p = board[sr] && board[sr][sc];
+        if(!p || isCooling(p)) return false;
+        const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
+        if(!legal) return false;
+        movePiece(sr,sc,dr,dc);
+        return true;
+      }
+      case 'drop': {
+        const {owner,type,r,c} = action;
+        if(!hands[owner] || !hands[owner][type]) return false;
+        if(!dropIsLegal(owner,type,r,c)) return false;
+        performDrop(owner,type,r,c);
+        return true;
+      }
+      case 'promote': {
+        const {r,c} = action;
+        const p = board[r] && board[r][c];
+        if(!p || p.promoted || !canPromote(p.type)) return false;
+        performPromote(r,c);
+        return true;
+      }
+      case 'restart': {
+        init();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Every click funnels through here instead of mutating state directly.
+  function attemptAction(action){
+    if(!netActive || !colorAssigned){
+      applyActionAsHost(action);
+      return;
+    }
+    if(isHost){
+      const applied = applyActionAsHost(action);
+      if(applied) broadcastSync();
+    } else {
+      netSend({kind:'request', action});
+    }
+  }
+
+  function now2ms(remain){ return remain>0 ? now()+remain : 0; }
+
+  function serializeState(){
+    return {
+      board: board.map(row=>row.map(p=>{
+        if(!p) return null;
+        const remain = p.cooldownUntil ? Math.max(0, p.cooldownUntil-now()) : 0;
+        return {type:p.type, owner:p.owner, promoted:p.promoted, remain};
+      })),
+      hands: JSON.parse(JSON.stringify(hands)),
+      gameOver,
+      winner: winnerColor,
+      promoOffer: lastMovedForPromotionOffer ? {r:lastMovedForPromotionOffer.r, c:lastMovedForPromotionOffer.c} : null
+    };
+  }
+
+  function applySyncState(state){
+    board = state.board.map(row=>row.map(p=>{
+      if(!p) return null;
+      return {type:p.type, owner:p.owner, promoted:p.promoted, cooldownUntil: now2ms(p.remain)};
+    }));
+    hands = state.hands;
+    gameOver = state.gameOver;
+    winnerColor = state.winner;
+    selected = null;
+    dropSelection = null;
+    dropHint.classList.remove('show');
+    lastMovedForPromotionOffer = state.promoOffer;
+    renderAll();
+    if(gameOver){
+      winText.textContent = (winnerColor==='sente' ? '先手の勝ち！' : '後手の勝ち！');
+      overlayEl.classList.add('show');
+    } else {
+      overlayEl.classList.remove('show');
+    }
+  }
+
+  function broadcastSync(){
+    const state = serializeState();
+    state.seq = ++syncSeq; // monotonically increasing, so a late/out-of-order sync can never overwrite a newer one
+    netBroadcast({kind:'sync', state});
+  }
+
+  function netBroadcast(action){
+    if(netActive && netSend) netSend(action);
+  }
+
+  function handleRemote(data){
+    if(!data || !data.kind) return;
+    if(data.kind==='request'){
+      if(isHost){
+        const applied = applyActionAsHost(data.action);
+        if(applied) broadcastSync();
+      }
+      return;
+    }
+    if(data.kind==='sync'){
+      if(typeof data.state.seq==='number'){
+        if(data.state.seq<=lastAppliedSeq) return; // stale sync, arrived out of order — ignore it
+        lastAppliedSeq = data.state.seq;
+      }
+      applySyncState(data.state);
+    }
+  }
+
+  function updateNetStatus(peerCount){
+    if(!colorAssigned){
+      netStatusEl.textContent = peerCount>0
+        ? '接続中…'
+        : '相手の参加を待っています（招待リンクを送ってください）';
+      return;
+    }
+    const label = myColor==='sente' ? '先手' : '後手';
+    netStatusEl.textContent = peerCount>0
+      ? ('あなたは'+label+'です。オンライン対局中（'+peerCount+'人接続）')
+      : ('あなたは'+label+'です。相手の再接続を待っています…');
+  }
+
+  async function connectRoom(){
+    const code = roomInput.value.trim();
+    if(!code){ netStatusEl.textContent='部屋番号を入力してください'; return; }
+    connectBtn.disabled = true;
+    netStatusEl.textContent = '接続中…';
+    try{
+      const {joinRoom, selfId} = await import('https://cdn.jsdelivr.net/npm/trystero/+esm');
+      netRoom = joinRoom({appId:'jp-freetime-shogi-v1'}, code);
+      const [sendAct, getAct] = netRoom.makeAction('act');
+      netSend = sendAct;
+      getAct((data)=>{ handleRemote(data); });
+      let peerCount = 0;
+      netRoom.onPeerJoin((peerId)=>{
+        peerCount++;
+        if(!colorAssigned){
+          myColor = (selfId < peerId) ? 'sente' : 'gote';
+          colorAssigned = true;
+          isHost = (myColor === 'sente');
+          if(isHost) broadcastSync();
+        }
+        updateNetStatus(peerCount);
+      });
+      netRoom.onPeerLeave(()=>{
+        peerCount = Math.max(0, peerCount-1);
+        updateNetStatus(peerCount);
+      });
+      netActive = true;
+      roomInput.disabled = true;
+      connectBtn.textContent = '接続済み';
+      inviteRow.style.display = 'flex';
+      updateNetStatus(0);
+    }catch(e){
+      netStatusEl.textContent = '接続に失敗しました。通信環境を確認してもう一度お試しください。';
+      connectBtn.disabled = false;
+    }
+  }
+
+  connectBtn.addEventListener('click', connectRoom);
+  inviteBtn.addEventListener('click', async ()=>{
+    const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
+    try{
+      await navigator.clipboard.writeText(url);
+      flashStatus('招待リンクをコピーしました');
+    }catch(e){
+      flashStatus(url);
+    }
+  });
+
+  const urlParams = new URLSearchParams(location.search);
+  const initialRoom = urlParams.get('room');
+  if(initialRoom){
+    roomInput.value = initialRoom;
+  }
+
+  init();
+  requestAnimationFrame(tick);
+
+  if(initialRoom){
+    connectRoom();
+  }
+})();
+</script>
+</body>
+</html>
