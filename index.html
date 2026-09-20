@@ -349,6 +349,7 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (function(){
   const ROWS=9, COLS=9;
@@ -790,19 +791,23 @@
     requestAnimationFrame(tick);
   }
 
-  // ---- online play (Trystero: serverless WebRTC, works from GitHub Pages) ----
-  // Architecture: one peer is the "host" (deterministically = whoever is sente).
-  // The host runs the one true copy of the game and is the only one who ever
-  // mutates board/hands directly. The other peer only *requests* actions and
-  // renders whatever the host broadcasts. This avoids the two independent
-  // copies of state drifting apart when both players act at nearly the same
-  // moment, and avoids relying on the two devices' clocks agreeing on cooldowns.
+  // ---- online play (PeerJS: serverless WebRTC) ----
+  // Architecture: one peer is the "host" (deterministically = whoever created
+  // the room, and is always sente). The host runs the one true copy of the
+  // game and is the only one who ever mutates board/hands directly. The
+  // other peer only *requests* actions and renders whatever the host
+  // broadcasts. This avoids the two independent copies of state drifting
+  // apart when both players act at nearly the same moment, and avoids
+  // relying on the two devices' clocks agreeing on cooldowns.
   const netStatusEl = document.getElementById('netStatus');
   const roomInput = document.getElementById('roomInput');
   const createRoomBtn = document.getElementById('createRoomBtn');
   const connectBtn = document.getElementById('connectBtn');
   const inviteBtn = document.getElementById('inviteBtn');
   const inviteRow = document.getElementById('inviteRow');
+
+  const ID_PREFIX = 'jp-freetime-shogi-';
+  let peer=null, conn=null, peerCount=0;
 
   // Validates + applies one action to the single authoritative board.
   // Used directly for local/offline play, and by the host for both its own
@@ -921,16 +926,16 @@
     }
   }
 
-  function updateNetStatus(peerCount){
+  function updateNetStatus(count){
     if(!colorAssigned){
-      netStatusEl.textContent = peerCount>0
+      netStatusEl.textContent = count>0
         ? '接続中…'
         : '相手の参加を待っています（招待リンクを送ってください）';
       return;
     }
     const label = myColor==='sente' ? '先手' : '後手';
-    netStatusEl.textContent = peerCount>0
-      ? ('あなたは'+label+'です。オンライン対局中（'+peerCount+'人接続）')
+    netStatusEl.textContent = count>0
+      ? ('あなたは'+label+'です。オンライン対局中（'+count+'人接続）')
       : ('あなたは'+label+'です。相手の再接続を待っています…');
   }
 
@@ -939,59 +944,121 @@
     return String(n).padStart(4,'0');
   }
 
-  async function createRoom(){
-    if(netActive) return;
-    roomCreator = true;
-    roomInput.value = generateRoomNumber();
-    await connectRoom();
+  function netSendFn(data){
+    if(conn && conn.open) conn.send(data);
   }
 
-  async function connectRoom(){
+  // 部屋を作った側を必ず先手・ホストにする。
+  function createRoom(){
+    if(netActive) return;
+    if(typeof Peer === 'undefined'){
+      netStatusEl.textContent = '通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください';
+      return;
+    }
+    roomCreator = true;
+    isHost = true;
+    myColor = 'sente';
+    const code = generateRoomNumber();
+    roomInput.value = code;
+    connectBtn.disabled = true;
+    createRoomBtn.disabled = true;
+    netStatusEl.textContent = '部屋を作成しています…';
+
+    peer = new Peer(ID_PREFIX+code);
+
+    peer.on('open', ()=>{
+      colorAssigned = true;
+      netActive = true;
+      netSend = netSendFn;
+      roomInput.disabled = true;
+      connectBtn.textContent = '入室済み';
+      inviteRow.style.display = 'flex';
+      updateNetStatus(0);
+    });
+
+    peer.on('connection', (c)=>{
+      conn = c;
+      conn.on('open', ()=>{
+        peerCount++;
+        broadcastSync();
+        updateNetStatus(peerCount);
+      });
+      conn.on('data', (data)=>{ handleRemote(data); });
+      conn.on('close', ()=>{
+        peerCount = Math.max(0, peerCount-1);
+        updateNetStatus(peerCount);
+      });
+    });
+
+    peer.on('error', (err)=>{
+      console.error(err);
+      netStatusEl.textContent = '接続に失敗しました。通信環境を確認してもう一度お試しください。';
+      connectBtn.disabled = false;
+      createRoomBtn.disabled = false;
+      roomCreator = false;
+      isHost = false;
+      netActive = false;
+      colorAssigned = false;
+    });
+  }
+
+  function connectRoom(){
+    if(roomCreator){
+      createRoom();
+      return;
+    }
     const code = roomInput.value.trim();
     if(!/^\d{4}$/.test(code)){
       netStatusEl.textContent='部屋番号は4桁の数字で入力してください';
       return;
     }
+    if(typeof Peer === 'undefined'){
+      netStatusEl.textContent = '通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください';
+      return;
+    }
     connectBtn.disabled = true;
     createRoomBtn.disabled = true;
-    netStatusEl.textContent = roomCreator ? '部屋を作成しています…' : '入室しています…';
-    try{
-      const {joinRoom} = await import('https://cdn.jsdelivr.net/npm/trystero/+esm');
-      netRoom = joinRoom({appId:'jp-freetime-shogi-v1'}, code);
-      const [sendAct, getAct] = netRoom.makeAction('act');
-      netSend = sendAct;
-      getAct((data)=>{ handleRemote(data); });
+    netStatusEl.textContent = '入室しています…';
 
-      // 部屋を作った側を必ず先手・ホストにする。
-      myColor = roomCreator ? 'sente' : 'gote';
-      isHost = roomCreator;
-      colorAssigned = true;
-      netActive = true;
+    isHost = false;
+    myColor = 'gote';
+    peer = new Peer();
 
-      let peerCount = 0;
-      netRoom.onPeerJoin(()=>{
-        peerCount++;
-        if(isHost) broadcastSync();
-        updateNetStatus(peerCount);
+    peer.on('open', ()=>{
+      conn = peer.connect(ID_PREFIX+code, {reliable:true});
+      netSend = netSendFn;
+
+      conn.on('open', ()=>{
+        colorAssigned = true;
+        netActive = true;
+        roomInput.disabled = true;
+        connectBtn.textContent = '入室済み';
+        updateNetStatus(1);
       });
-      netRoom.onPeerLeave(()=>{
-        peerCount = Math.max(0, peerCount-1);
-        updateNetStatus(peerCount);
+      conn.on('data', (data)=>{ handleRemote(data); });
+      conn.on('close', ()=>{
+        updateNetStatus(0);
       });
+      conn.on('error', (err)=>{
+        console.error(err);
+        netStatusEl.textContent = '接続に失敗しました。部屋番号を確認してください。';
+        connectBtn.disabled = false;
+        createRoomBtn.disabled = false;
+      });
+    });
 
-      roomInput.disabled = true;
-      connectBtn.textContent = '入室済み';
-      inviteRow.style.display = 'flex';
-      updateNetStatus(0);
-    }catch(e){
-      netStatusEl.textContent = '接続に失敗しました。通信環境を確認してもう一度お試しください。';
+    peer.on('error', (err)=>{
+      console.error(err);
+      const msg = (err.type === 'peer-unavailable')
+        ? '部屋が見つかりません。番号をご確認ください'
+        : '接続エラーが発生しました(' + err.type + ')';
+      netStatusEl.textContent = msg;
       connectBtn.disabled = false;
       createRoomBtn.disabled = false;
-      roomCreator = false;
-    }
+    });
   }
 
-  createRoomBtn.addEventListener('click', createRoom);
+  createRoomBtn.addEventListener('click', ()=>{ roomCreator=true; createRoom(); });
   connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
   inviteBtn.addEventListener('click', async ()=>{
     const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
