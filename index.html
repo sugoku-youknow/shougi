@@ -1081,7 +1081,7 @@
       return;
     }
     if(data.kind==='ready-request'){
-      if(isHost && conn && conn.open){
+      if(isHost && conn){
         readyState.gote = true;
         checkMatchStart();
         broadcastSync();
@@ -1166,7 +1166,9 @@
   }
 
   function updateReadyUI(){
-    if(!colorAssigned || !conn || !conn.open){
+    // PeerJSではopenイベント直後でもconn.openの反映タイミングに差があるため、
+    // 接続状態はnetActiveを基準にする。
+    if(!colorAssigned || !netActive || !conn){
       readyRow.style.display = 'none';
       return;
     }
@@ -1186,6 +1188,11 @@
       : '準備完了';
   }
 
+  function getDisplayName(){
+    const name = playerNameInput.value.trim();
+    return name || 'プレイヤー';
+  }
+
   function generateRoomNumber(){
     const n = (crypto.getRandomValues(new Uint32Array(1))[0] % 9) + 1;
     return String(n);
@@ -1198,7 +1205,7 @@
   // 部屋を作った側を必ず先手・ホストにする。
   function createRoom(){
     if(netActive) return;
-    myName = playerNameInput.value.trim() || 'プレイヤー';
+    myName = getDisplayName();
     if(typeof Peer === 'undefined'){
       netStatusEl.textContent = '通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください';
       return;
@@ -1227,6 +1234,12 @@
 
     peer.on('connection', (c)=>{
       conn = c;
+      // incoming connectionを受け取った時点でホストはオンライン対局状態。
+      netActive = true;
+      colorAssigned = true;
+      isHost = true;
+      myColor = 'sente';
+
       conn.on('open', ()=>{
         peerCount++;
         // 相手が入室したら、ホスト側も必ず対局画面へ移動する。
@@ -1241,6 +1254,7 @@
 
         netSend({kind:'hello', name:myName});
         broadcastSync();
+        // ここで必ず「準備完了」を表示する。
         updateReadyUI();
         updateNetStatus(peerCount);
       });
@@ -1264,7 +1278,8 @@
   }
 
   function connectRoom(){
-    myName = playerNameInput.value.trim() || 'プレイヤー';
+    // 名前は任意。未入力でも「プレイヤー」という表示名で参加できる。
+    myName = getDisplayName();
     if(roomCreator){
       createRoom();
       return;
@@ -1332,7 +1347,7 @@
   connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
 
   readyBtn.addEventListener('click', ()=>{
-    if(!colorAssigned || !conn || !conn.open || matchStarted) return;
+    if(!colorAssigned || !netActive || !conn || matchStarted) return;
     if(readyState[myColor]) return;
 
     if(isHost){
