@@ -21,6 +21,7 @@
     --panel:#EFE3CC;
     --panel-border:#C9AE7E;
   }
+  :root{--board-size: min(90vw, 90dvh);}
   *{box-sizing:border-box;}
   html,body{
     margin:0;
@@ -32,13 +33,80 @@
     overscroll-behavior:none;
   }
   .wrap{
-    max-width:460px;
+    width:100%;
+    max-width:none;
     margin:0 auto;
-    padding:14px 12px 28px;
+    padding:10px 8px 18px;
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:10px;
+    gap:8px;
+  }
+
+  .screen{width:100%;display:flex;flex-direction:column;align-items:center;}
+  .lobby-screen{min-height:calc(100dvh - 28px);justify-content:center;gap:14px;}
+  .match-screen{display:none;gap:6px;}
+  .match-screen.show{display:flex;}
+  .lobby-screen.hide{display:none;}
+
+  .lobby-card{
+    width:min(92vw,420px);
+    padding:22px 18px;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:14px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12);
+  }
+  .lobby-card h1{text-align:center;margin:0 0 8px;}
+  .lobby-card .sub{margin-bottom:18px;}
+  .lobby-input{
+    width:100%;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:1rem;
+    padding:11px 12px;
+    border-radius:8px;
+    border:1px solid var(--panel-border);
+    background:#fff;
+    color:var(--ink);
+  }
+  .lobby-label{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.76rem;
+    color:#7A6A55;
+    margin:0 0 5px;
+  }
+  .lobby-actions{display:flex;gap:8px;margin-top:10px;}
+  .lobby-actions button{min-height:44px;font-size:.86rem;}
+  .lobby-status{
+    min-height:18px;
+    margin-top:10px;
+    text-align:center;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.76rem;
+    color:#7A6A55;
+  }
+
+  .opponent-bar{
+    width:min(100%, var(--board-size));
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:30px;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.82rem;
+    color:#6A5A45;
+  }
+  .opponent-bar strong{color:var(--ink);font-weight:600;margin-left:4px;}
+
+  .game-meta{
+    width:min(100%, var(--board-size));
+    display:flex;
+    justify-content:center;
+    min-height:16px;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    font-size:.68rem;
+    color:#8A765B;
   }
   h1{
     font-size:1.15rem;
@@ -56,8 +124,7 @@
     line-height:1.5;
   }
   .hand{
-    width:100%;
-    max-width:400px;
+    width:min(100%, var(--board-size));
     display:flex;
     align-items:center;
     gap:6px;
@@ -114,15 +181,15 @@
 
   .board-frame{
     position:relative;
-    padding:10px;
+    padding:6px;
     background:var(--board-frame);
     border-radius:6px;
     box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 0 0 2px rgba(0,0,0,.15);
   }
   .board{
     position:relative;
-    width:min(88vw,342px);
-    height:min(88vw,342px);
+    width:var(--board-size);
+    height:var(--board-size);
     background:var(--wood);
     background-image:linear-gradient(135deg, var(--wood) 0%, var(--wood-dark) 100%);
     display:grid;
@@ -208,8 +275,7 @@
   .piece.cooling .pent{opacity:.55;}
 
   .controls{
-    width:100%;
-    max-width:400px;
+    width:min(100%, var(--board-size));
     display:flex;
     align-items:center;
     gap:10px;
@@ -222,7 +288,7 @@
   .controls label{font-size:.72rem;color:#7A6A55;white-space:nowrap;}
   .controls input[type=range]{flex:1;accent-color:var(--accent);}
   .controls .val{font-size:.72rem;width:34px;text-align:right;color:var(--ink);}
-  .btnrow{display:flex;gap:8px;width:100%;max-width:400px;}
+  .btnrow{display:flex;gap:8px;width:min(100%, var(--board-size));}
   button.action{
     flex:1;
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
@@ -303,46 +369,56 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>フリータイム将棋</h1>
-  <p class="sub">手番なし。駒ごとにクールダウンがあり、動かした直後だけ少し待てば、あとは好きなタイミングで自由に指せます。相手の玉を取ったら勝ちです。</p>
 
-  <div class="controls" id="netPanel">
-    <button class="action" id="createRoomBtn" style="flex:none;padding:8px 12px;">部屋を作る</button>
-    <label for="roomInput">部屋番号</label>
-    <input type="text" id="roomInput" inputmode="numeric" autocomplete="off" placeholder="4桁の番号" style="flex:1;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:.8rem;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);">
-    <button class="action" id="connectBtn" style="flex:none;padding:8px 12px;">入室</button>
-  </div>
-  <div class="btnrow" id="inviteRow" style="display:none;">
-    <button class="action" id="inviteBtn">招待リンクをコピー</button>
-  </div>
-  <div class="btnrow" id="readyRow" style="display:none;">
-    <button class="action" id="readyBtn">準備完了</button>
-  </div>
-  <div class="status" id="netStatus">未接続（この端末だけで2人プレイできます）</div>
+  <section class="screen lobby-screen" id="lobbyScreen">
+    <div class="lobby-card">
+      <h1>フリータイム将棋</h1>
+      <p class="sub">部屋番号を入力して対局に参加できます。</p>
 
-  <div class="hand" id="handGote">
-    <div class="hand-label">後手</div>
-    <div class="hand-pieces" id="handGotePieces"></div>
-  </div>
+      <label class="lobby-label" for="playerNameInput">名前</label>
+      <input class="lobby-input" id="playerNameInput" type="text"
+             maxlength="12" autocomplete="off" placeholder="自分の名前">
 
-  <div class="board-frame">
-    <div class="board" id="board"></div>
-  </div>
+      <div style="height:10px"></div>
 
-  <div class="hand" id="handSente">
-    <div class="hand-label">先手</div>
-    <div class="hand-pieces" id="handSentePieces"></div>
-  </div>
+      <label class="lobby-label" for="roomInput">部屋番号（1桁）</label>
+      <input class="lobby-input" id="roomInput" type="text"
+             inputmode="numeric" maxlength="1" autocomplete="off" placeholder="1〜9">
 
-  <div class="controls">
-    <label for="cooldown">クールダウン</label>
-    <input type="range" id="cooldown" min="0" max="8" step="0.5" value="2.5">
-    <div class="val" id="cooldownVal">2.5秒</div>
-  </div>
-  <div class="btnrow">
-    <button class="action" id="restartBtn">最初から</button>
-  </div>
-  <div class="status" id="status"></div>
+      <div class="lobby-actions">
+        <button class="action" id="createRoomBtn">部屋を作る</button>
+        <button class="action" id="connectBtn">入室する</button>
+      </div>
+
+      <div class="lobby-status" id="netStatus">部屋を作るか、相手から教えてもらった1桁の番号を入力してください。</div>
+    </div>
+  </section>
+
+  <section class="screen match-screen" id="matchScreen">
+    <div class="opponent-bar">相手：<strong id="opponentName">待機中</strong></div>
+
+    <div class="hand" id="handGote">
+      <div class="hand-label">後手</div>
+      <div class="hand-pieces" id="handGotePieces"></div>
+    </div>
+
+    <div class="board-frame">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="hand" id="handSente">
+      <div class="hand-label">先手</div>
+      <div class="hand-pieces" id="handSentePieces"></div>
+    </div>
+
+    <div class="game-meta" id="gameMeta"></div>
+
+    <div class="btnrow">
+      <button class="action" id="restartBtn">最初から</button>
+      <button class="action" id="backLobbyBtn">部屋を退出</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
 </div>
 
 <div class="drop-hint" id="dropHint">持ち駒を打つマスを選んでください</div>
@@ -371,20 +447,30 @@
   const overlayEl=document.getElementById('overlay');
   const winText=document.getElementById('winText');
   const dropHint=document.getElementById('dropHint');
-  const cooldownInput=document.getElementById('cooldown');
-  const cooldownVal=document.getElementById('cooldownVal');
+
   const handSenteEl=document.getElementById('handSentePieces');
   const handGoteEl=document.getElementById('handGotePieces');
 
-  let cooldownMs = parseFloat(cooldownInput.value)*1000;
-  cooldownInput.addEventListener('input',()=>{
-    cooldownMs = parseFloat(cooldownInput.value)*1000;
-    cooldownVal.textContent = parseFloat(cooldownInput.value).toFixed(1)+'秒';
-  });
-  cooldownVal.textContent = parseFloat(cooldownInput.value).toFixed(1)+'秒';
+  // 駒ごとのクールタイム（秒）
+  // UIから変更するのではなく、ここを書き換えて設定します。
+  const COOLDOWN_SECONDS = {
+    P: 2.5, // 歩
+    L: 3.0, // 香
+    N: 3.0, // 桂
+    S: 2.5, // 銀
+    G: 2.0, // 金
+    B: 4.0, // 角
+    R: 4.0, // 飛
+    K: 1.0  // 王
+  };
+
+  function cooldownMsFor(type){
+    return (COOLDOWN_SECONDS[type] ?? 2.5) * 1000;
+  }
 
   let board, hands, selected, dropSelection, gameOver, winnerColor=null, cells=[];
   let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false, roomCreator=false;
+  let myName='', opponentName='待機中';
   let syncSeq=0, lastAppliedSeq=-1;
   // matchStarted: オフライン(この端末だけ)のときは常にtrueで即プレイ可能。
   // オンライン接続時はfalseから始まり、双方が「準備完了」を押した時点でtrueになる。
@@ -625,7 +711,7 @@
       }
     }
     p.promoted = promoted;
-    p.cooldownUntil = now()+cooldownMs;
+    p.cooldownUntil = now()+cooldownMsFor(p.type);
     board[dr][dc]=p;
     selected=null;
     lastMovedForPromotionOffer = (!promoted && canPromote(p.type) && (inZone(p.owner,dr)||inZone(p.owner,sr))) ? {r:dr,c:dc} : null;
@@ -669,7 +755,7 @@
   }
 
   function performDrop(owner,type,r,c){
-    board[r][c] = {type, owner, promoted:false, cooldownUntil: now()+cooldownMs};
+    board[r][c] = {type, owner, promoted:false, cooldownUntil: now()+cooldownMsFor(type)};
     hands[owner][type]--;
     renderAll();
     checkKingCapture();
@@ -728,7 +814,7 @@
             const ring=document.createElement('div');
             ring.className='cooldown-ring';
             const remaining = p.cooldownUntil-now();
-            const pct = Math.max(0,Math.min(100, (remaining/cooldownMs)*100));
+            const pct = Math.max(0,Math.min(100, (remaining/cooldownMsFor(p.type))*100));
             ring.style.setProperty('--pct',pct+'%');
             pieceEl.appendChild(ring);
           }
@@ -822,13 +908,19 @@
   // apart when both players act at nearly the same moment, and avoids
   // relying on the two devices' clocks agreeing on cooldowns.
   const netStatusEl = document.getElementById('netStatus');
+  const lobbyScreen = document.getElementById('lobbyScreen');
+  const matchScreen = document.getElementById('matchScreen');
+  const playerNameInput = document.getElementById('playerNameInput');
+  const opponentNameEl = document.getElementById('opponentName');
+  const gameMetaEl = document.getElementById('gameMeta');
+  const backLobbyBtn = document.getElementById('backLobbyBtn');
   const roomInput = document.getElementById('roomInput');
   const createRoomBtn = document.getElementById('createRoomBtn');
   const connectBtn = document.getElementById('connectBtn');
-  const inviteBtn = document.getElementById('inviteBtn');
-  const inviteRow = document.getElementById('inviteRow');
-  const readyRow = document.getElementById('readyRow');
-  const readyBtn = document.getElementById('readyBtn');
+
+
+
+
 
   const ID_PREFIX = 'jp-freetime-shogi-';
   let peer=null, conn=null, peerCount=0;
@@ -908,7 +1000,9 @@
       winner: winnerColor,
       promoOffer: lastMovedForPromotionOffer ? {r:lastMovedForPromotionOffer.r, c:lastMovedForPromotionOffer.c} : null,
       matchStarted,
-      readyState: {sente:readyState.sente, gote:readyState.gote}
+      readyState: {sente:readyState.sente, gote:readyState.gote},
+      hostName: isHost ? myName : null,
+      opponentName: opponentName
     };
   }
 
@@ -926,7 +1020,8 @@
     lastMovedForPromotionOffer = state.promoOffer;
     if(typeof state.matchStarted==='boolean') matchStarted = state.matchStarted;
     if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
-    updateReadyUI();
+    if(!isHost && state.hostName) setOpponentName(state.hostName);
+    updateGameMeta();
     updateNetStatus(1);
     renderAll();
     if(gameOver){
@@ -956,12 +1051,12 @@
       }
       return;
     }
-    if(data.kind==='ready-request'){
+    if(data.kind==='hello'){
       if(isHost){
-        readyState.gote = true;
-        checkMatchStart();
+        setOpponentName(data.name);
+        matchStarted = true;
+        readyState = {sente:true, gote:true};
         broadcastSync();
-        updateReadyUI();
       }
       return;
     }
@@ -974,43 +1069,65 @@
     }
   }
 
+  function showMatchScreen(){
+    lobbyScreen.classList.add('hide');
+    matchScreen.classList.add('show');
+    updateBoardSize();
+  }
+
+  function showLobbyScreen(){
+    matchScreen.classList.remove('show');
+    lobbyScreen.classList.remove('hide');
+  }
+
+  function updateBoardSize(){
+    // 盤面・持ち駒・対局ボタンが同じ画面に収まる範囲で、盤面を可能な限り大きくする。
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const reserved = 190;
+    const size = Math.max(220, Math.floor(Math.min(vw - 16, vh - reserved)));
+    document.documentElement.style.setProperty('--board-size', size + 'px');
+  }
+
+  window.addEventListener('resize', updateBoardSize);
+  window.addEventListener('orientationchange', ()=>setTimeout(updateBoardSize, 80));
+
+  function setOpponentName(name){
+    opponentName = (name || '待機中').toString().slice(0,12);
+    opponentNameEl.textContent = opponentName;
+  }
+
+  function updateGameMeta(){
+    if(!colorAssigned){
+      gameMetaEl.textContent = '';
+      return;
+    }
+    gameMetaEl.textContent = myColor==='sente' ? 'あなたは先手です' : 'あなたは後手です';
+  }
+
   function updateNetStatus(count){
     if(!colorAssigned){
       netStatusEl.textContent = count>0
-        ? '接続中…'
-        : '相手の参加を待っています（招待リンクを送ってください）';
+        ? '相手が参加しました'
+        : '部屋を作るか、相手から教えてもらった1桁の番号を入力してください。';
       return;
     }
-    const label = myColor==='sente' ? '先手' : '後手';
     if(!matchStarted){
-      netStatusEl.textContent = 'あなたは'+label+'です。接続完了。準備ができたら「準備完了」を押してください';
+      netStatusEl.textContent = '接続しました。相手の参加を待っています…';
       return;
     }
-    netStatusEl.textContent = count>0
-      ? ('あなたは'+label+'です。オンライン対局中（'+count+'人接続）')
-      : ('あなたは'+label+'です。相手の再接続を待っています…');
+    netStatusEl.textContent = count>0 ? '対局中' : '相手の再接続を待っています…';
   }
 
   function checkMatchStart(){
-    if(readyState.sente && readyState.gote){
-      matchStarted = true;
-    }
+    if(readyState.sente && readyState.gote) matchStarted = true;
   }
 
-  function updateReadyUI(){
-    if(!colorAssigned || matchStarted){
-      readyRow.style.display = 'none';
-      return;
-    }
-    readyRow.style.display = 'flex';
-    const already = readyState[myColor];
-    readyBtn.disabled = already;
-    readyBtn.textContent = already ? '準備完了（相手を待っています）' : '準備完了';
-  }
+  function updateReadyUI(){}
 
   function generateRoomNumber(){
-    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 10000;
-    return String(n).padStart(4,'0');
+    const n = (crypto.getRandomValues(new Uint32Array(1))[0] % 9) + 1;
+    return String(n);
   }
 
   function netSendFn(data){
@@ -1020,6 +1137,7 @@
   // 部屋を作った側を必ず先手・ホストにする。
   function createRoom(){
     if(netActive) return;
+    myName = playerNameInput.value.trim() || 'プレイヤー';
     if(typeof Peer === 'undefined'){
       netStatusEl.textContent = '通信ライブラリの読み込みに失敗しました。回線を確認して再読み込みしてください';
       return;
@@ -1042,19 +1160,20 @@
       matchStarted = false;
       readyState = {sente:false, gote:false};
       roomInput.disabled = true;
-      connectBtn.textContent = '入室済み';
-      inviteRow.style.display = 'flex';
-      buildBoardDom();
-      renderAll();
-      updateNetStatus(0);
-      updateReadyUI();
+      connectBtn.textContent = '作成済み';
+      netStatusEl.textContent = '部屋番号は「'+roomInput.value+'」です。相手の入室を待っています…';
     });
 
     peer.on('connection', (c)=>{
       conn = c;
       conn.on('open', ()=>{
         peerCount++;
+        netSend({kind:'hello', name:myName});
         broadcastSync();
+        showMatchScreen();
+        buildBoardDom();
+        renderAll();
+        updateGameMeta();
         updateNetStatus(peerCount);
       });
       conn.on('data', (data)=>{ handleRemote(data); });
@@ -1077,13 +1196,14 @@
   }
 
   function connectRoom(){
+    myName = playerNameInput.value.trim() || 'プレイヤー';
     if(roomCreator){
       createRoom();
       return;
     }
     const code = roomInput.value.trim();
-    if(!/^\d{4}$/.test(code)){
-      netStatusEl.textContent='部屋番号は4桁の数字で入力してください';
+    if(!/^[1-9]$/.test(code)){
+      netStatusEl.textContent='部屋番号は1桁の数字（1〜9）で入力してください';
       return;
     }
     if(typeof Peer === 'undefined'){
@@ -1105,14 +1225,16 @@
       conn.on('open', ()=>{
         colorAssigned = true;
         netActive = true;
-        matchStarted = false;
-        readyState = {sente:false, gote:false};
+        matchStarted = true;
+        readyState = {sente:true, gote:true};
         roomInput.disabled = true;
         connectBtn.textContent = '入室済み';
+        showMatchScreen();
         buildBoardDom();
         renderAll();
+        updateGameMeta();
+        netSend({kind:'hello', name:myName});
         updateNetStatus(1);
-        updateReadyUI();
       });
       conn.on('data', (data)=>{ handleRemote(data); });
       conn.on('close', ()=>{
@@ -1139,44 +1261,11 @@
 
   createRoomBtn.addEventListener('click', ()=>{ roomCreator=true; createRoom(); });
   connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
-  readyBtn.addEventListener('click', ()=>{
-    if(!colorAssigned || matchStarted) return;
-    if(readyState[myColor]) return;
-    if(isHost){
-      readyState.sente = true;
-      checkMatchStart();
-      broadcastSync();
-      updateReadyUI();
-      updateNetStatus(peerCount);
-    } else {
-      readyState.gote = true; // 楽観的にローカル表示だけ先に更新（正はホストからのsyncで確定）
-      netSend({kind:'ready-request'});
-      updateReadyUI();
-    }
+  backLobbyBtn.addEventListener('click', ()=>{
+    if(conn) try{ conn.close(); }catch(e){}
+    if(peer) try{ peer.destroy(); }catch(e){}
+    location.reload();
   });
-  inviteBtn.addEventListener('click', async ()=>{
-    const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
-    try{
-      await navigator.clipboard.writeText(url);
-      flashStatus('招待リンクをコピーしました');
-    }catch(e){
-      flashStatus(url);
-    }
-  });
-
-  const urlParams = new URLSearchParams(location.search);
-  const initialRoom = urlParams.get('room');
-  if(initialRoom){
-    roomCreator = false;
-    roomInput.value = initialRoom;
-  }
-
-  init();
-  requestAnimationFrame(tick);
-
-  if(initialRoom){
-    connectRoom();
-  }
 })();
 </script>
 </body>
