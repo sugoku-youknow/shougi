@@ -190,9 +190,12 @@
     background:linear-gradient(180deg,#4A362B,#2C1F19);
     color:var(--gote-text);
     box-shadow:inset 0 0 0 1px #000;
-    transform:rotate(180deg);
   }
   .owner-gote{transform:none;}
+  .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
+  .board.flipped .owner-sente .pent{transform:rotate(180deg);}
+  .wrap.flip-hands #handGote{order:2;}
+  .wrap.flip-hands #handSente{order:-1;}
 
   .cooldown-ring{
     position:absolute;
@@ -312,6 +315,9 @@
   <div class="btnrow" id="inviteRow" style="display:none;">
     <button class="action" id="inviteBtn">招待リンクをコピー</button>
   </div>
+  <div class="btnrow" id="readyRow" style="display:none;">
+    <button class="action" id="readyBtn">準備完了</button>
+  </div>
   <div class="status" id="netStatus">未接続（この端末だけで2人プレイできます）</div>
 
   <div class="hand" id="handGote">
@@ -380,6 +386,10 @@
   let board, hands, selected, dropSelection, gameOver, winnerColor=null, cells=[];
   let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false, roomCreator=false;
   let syncSeq=0, lastAppliedSeq=-1;
+  // matchStarted: オフライン(この端末だけ)のときは常にtrueで即プレイ可能。
+  // オンライン接続時はfalseから始まり、双方が「準備完了」を押した時点でtrueになる。
+  let matchStarted = true;
+  let readyState = {sente:false, gote:false};
 
   function freshBoard(){
     const b = Array.from({length:ROWS},()=>Array(COLS).fill(null));
@@ -415,19 +425,27 @@
   }
 
   function buildBoardDom(){
+    // 後手側のプレイヤーは、自分の玉が画面下に来るよう盤面を180度反転して表示する。
+    // 内部の座標(r,c)は変えず、DOMへの並び順だけを反転させる。
+    const flipped = myColor==='gote';
+    boardEl.classList.toggle('flipped', flipped);
+    const wrapEl = document.querySelector('.wrap');
+    if(wrapEl) wrapEl.classList.toggle('flip-hands', flipped);
+
     boardEl.innerHTML='';
     cells=[];
-    for(let r=0;r<ROWS;r++){
-      const rowArr=[];
-      for(let c=0;c<COLS;c++){
+    for(let r=0;r<ROWS;r++) cells.push(new Array(COLS));
+    for(let sr=0;sr<ROWS;sr++){
+      for(let sc=0;sc<COLS;sc++){
+        const r = flipped ? ROWS-1-sr : sr;
+        const c = flipped ? COLS-1-sc : sc;
         const cell=document.createElement('div');
         cell.className='cell';
         cell.dataset.r=r; cell.dataset.c=c;
         cell.addEventListener('click',()=>onCellClick(r,c));
         boardEl.appendChild(cell);
-        rowArr.push(cell);
+        cells[r][c]=cell;
       }
-      cells.push(rowArr);
     }
   }
 
@@ -506,6 +524,10 @@
 
   function onCellClick(r,c){
     if(gameOver) return;
+    if(netActive && colorAssigned && !matchStarted){
+      flashStatus('両者が「準備完了」を押すと対局が始まります');
+      return;
+    }
     const clicked = board[r][c];
 
     // dropping a hand piece
@@ -805,6 +827,8 @@
   const connectBtn = document.getElementById('connectBtn');
   const inviteBtn = document.getElementById('inviteBtn');
   const inviteRow = document.getElementById('inviteRow');
+  const readyRow = document.getElementById('readyRow');
+  const readyBtn = document.getElementById('readyBtn');
 
   const ID_PREFIX = 'jp-freetime-shogi-';
   let peer=null, conn=null, peerCount=0;
@@ -813,13 +837,17 @@
   // Used directly for local/offline play, and by the host for both its own
   // clicks and requests coming in from the other peer.
   function applyActionAsHost(action, actorColor=myColor){
+    // 自分の駒以外を動かせなくする識別チェックは、オンライン対局中だけ必要。
+    // オフライン(この端末だけ)のときは myColor が null のままなので、
+    // このチェックを常に適用すると一手目以降ずっと弾かれてしまう。
+    const requireActor = netActive;
     switch(action.kind){
       case 'move': {
         const {sr,sc,dr,dc,owner} = action;
         const p = board[sr] && board[sr][sc];
         // クールダウンは「動かした駒だけ」に適用する。
-        // さらに、オンラインでは自分の駒以外を動かせないようにする。
-        if(!p || p.owner!==owner || p.owner!==actorColor || isCooling(p)) return false;
+        if(!p || p.owner!==owner || isCooling(p)) return false;
+        if(requireActor && p.owner!==actorColor) return false;
         const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
         if(!legal) return false;
         movePiece(sr,sc,dr,dc);
@@ -827,7 +855,8 @@
       }
       case 'drop': {
         const {owner,type,r,c} = action;
-        if(owner!==actorColor || !hands[owner] || !hands[owner][type]) return false;
+        if(requireActor && owner!==actorColor) return false;
+        if(!hands[owner] || !hands[owner][type]) return false;
         if(!dropIsLegal(owner,type,r,c)) return false;
         performDrop(owner,type,r,c);
         return true;
@@ -849,6 +878,10 @@
 
   // Every click funnels through here instead of mutating state directly.
   function attemptAction(action){
+    if(netActive && colorAssigned && !matchStarted){
+      flashStatus('両者が「準備完了」を押すと対局が始まります');
+      return;
+    }
     if(!netActive || !colorAssigned){
       applyActionAsHost(action);
       return;
@@ -873,7 +906,9 @@
       hands: JSON.parse(JSON.stringify(hands)),
       gameOver,
       winner: winnerColor,
-      promoOffer: lastMovedForPromotionOffer ? {r:lastMovedForPromotionOffer.r, c:lastMovedForPromotionOffer.c} : null
+      promoOffer: lastMovedForPromotionOffer ? {r:lastMovedForPromotionOffer.r, c:lastMovedForPromotionOffer.c} : null,
+      matchStarted,
+      readyState: {sente:readyState.sente, gote:readyState.gote}
     };
   }
 
@@ -889,6 +924,10 @@
     dropSelection = null;
     dropHint.classList.remove('show');
     lastMovedForPromotionOffer = state.promoOffer;
+    if(typeof state.matchStarted==='boolean') matchStarted = state.matchStarted;
+    if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
+    updateReadyUI();
+    updateNetStatus(1);
     renderAll();
     if(gameOver){
       winText.textContent = (winnerColor==='sente' ? '先手の勝ち！' : '後手の勝ち！');
@@ -917,6 +956,15 @@
       }
       return;
     }
+    if(data.kind==='ready-request'){
+      if(isHost){
+        readyState.gote = true;
+        checkMatchStart();
+        broadcastSync();
+        updateReadyUI();
+      }
+      return;
+    }
     if(data.kind==='sync'){
       if(typeof data.state.seq==='number'){
         if(data.state.seq<=lastAppliedSeq) return; // stale sync, arrived out of order — ignore it
@@ -934,9 +982,30 @@
       return;
     }
     const label = myColor==='sente' ? '先手' : '後手';
+    if(!matchStarted){
+      netStatusEl.textContent = 'あなたは'+label+'です。接続完了。準備ができたら「準備完了」を押してください';
+      return;
+    }
     netStatusEl.textContent = count>0
       ? ('あなたは'+label+'です。オンライン対局中（'+count+'人接続）')
       : ('あなたは'+label+'です。相手の再接続を待っています…');
+  }
+
+  function checkMatchStart(){
+    if(readyState.sente && readyState.gote){
+      matchStarted = true;
+    }
+  }
+
+  function updateReadyUI(){
+    if(!colorAssigned || matchStarted){
+      readyRow.style.display = 'none';
+      return;
+    }
+    readyRow.style.display = 'flex';
+    const already = readyState[myColor];
+    readyBtn.disabled = already;
+    readyBtn.textContent = already ? '準備完了（相手を待っています）' : '準備完了';
   }
 
   function generateRoomNumber(){
@@ -970,10 +1039,15 @@
       colorAssigned = true;
       netActive = true;
       netSend = netSendFn;
+      matchStarted = false;
+      readyState = {sente:false, gote:false};
       roomInput.disabled = true;
       connectBtn.textContent = '入室済み';
       inviteRow.style.display = 'flex';
+      buildBoardDom();
+      renderAll();
       updateNetStatus(0);
+      updateReadyUI();
     });
 
     peer.on('connection', (c)=>{
@@ -1031,9 +1105,14 @@
       conn.on('open', ()=>{
         colorAssigned = true;
         netActive = true;
+        matchStarted = false;
+        readyState = {sente:false, gote:false};
         roomInput.disabled = true;
         connectBtn.textContent = '入室済み';
+        buildBoardDom();
+        renderAll();
         updateNetStatus(1);
+        updateReadyUI();
       });
       conn.on('data', (data)=>{ handleRemote(data); });
       conn.on('close', ()=>{
@@ -1060,6 +1139,21 @@
 
   createRoomBtn.addEventListener('click', ()=>{ roomCreator=true; createRoom(); });
   connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
+  readyBtn.addEventListener('click', ()=>{
+    if(!colorAssigned || matchStarted) return;
+    if(readyState[myColor]) return;
+    if(isHost){
+      readyState.sente = true;
+      checkMatchStart();
+      broadcastSync();
+      updateReadyUI();
+      updateNetStatus(peerCount);
+    } else {
+      readyState.gote = true; // 楽観的にローカル表示だけ先に更新（正はホストからのsyncで確定）
+      netSend({kind:'ready-request'});
+      updateReadyUI();
+    }
+  });
   inviteBtn.addEventListener('click', async ()=>{
     const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
     try{
