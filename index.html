@@ -288,6 +288,18 @@
   .controls label{font-size:.72rem;color:#7A6A55;white-space:nowrap;}
   .controls input[type=range]{flex:1;accent-color:var(--accent);}
   .controls .val{font-size:.72rem;width:34px;text-align:right;color:var(--ink);}
+  .ready-row{
+    display:flex;
+    justify-content:center;
+    width:min(100%, var(--board-size));
+    margin:2px 0 4px;
+  }
+  .ready-row .ready-btn{
+    width:100%;
+    font-size:1rem;
+    font-weight:700;
+    padding:12px 10px;
+  }
   .btnrow{display:flex;gap:8px;width:min(100%, var(--board-size));}
   button.action{
     flex:1;
@@ -412,6 +424,10 @@
     </div>
 
     <div class="game-meta" id="gameMeta"></div>
+
+    <div class="ready-row" id="readyRow">
+      <button class="action ready-btn" id="readyBtn">準備完了</button>
+    </div>
 
     <div class="btnrow">
       <button class="action" id="restartBtn">最初から</button>
@@ -914,6 +930,8 @@
   const opponentNameEl = document.getElementById('opponentName');
   const gameMetaEl = document.getElementById('gameMeta');
   const backLobbyBtn = document.getElementById('backLobbyBtn');
+  const readyRow = document.getElementById('readyRow');
+  const readyBtn = document.getElementById('readyBtn');
   const roomInput = document.getElementById('roomInput');
   const createRoomBtn = document.getElementById('createRoomBtn');
   const connectBtn = document.getElementById('connectBtn');
@@ -1022,6 +1040,7 @@
     if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
     if(!isHost && state.hostName) setOpponentName(state.hostName);
     updateGameMeta();
+    updateReadyUI();
     updateNetStatus(1);
     renderAll();
     if(gameOver){
@@ -1054,9 +1073,20 @@
     if(data.kind==='hello'){
       if(isHost){
         setOpponentName(data.name);
-        matchStarted = true;
-        readyState = {sente:true, gote:true};
+        // 接続しただけでは開始しない。双方が「準備完了」を押して開始する。
         broadcastSync();
+        updateReadyUI();
+        updateNetStatus(peerCount);
+      }
+      return;
+    }
+    if(data.kind==='ready-request'){
+      if(isHost && conn && conn.open){
+        readyState.gote = true;
+        checkMatchStart();
+        broadcastSync();
+        updateReadyUI();
+        updateNetStatus(peerCount);
       }
       return;
     }
@@ -1113,17 +1143,48 @@
       return;
     }
     if(!matchStarted){
-      netStatusEl.textContent = '接続しました。相手の参加を待っています…';
+      const myReady = !!readyState[myColor];
+      const otherReady = !!readyState[myColor==='sente' ? 'gote' : 'sente'];
+      if(myReady && otherReady){
+        netStatusEl.textContent = '対局を開始します…';
+      }else if(myReady){
+        netStatusEl.textContent = '準備完了。相手の準備を待っています…';
+      }else if(otherReady){
+        netStatusEl.textContent = '相手が準備完了しました。準備完了を押してください';
+      }else{
+        netStatusEl.textContent = '準備ができたら「準備完了」を押してください';
+      }
       return;
     }
     netStatusEl.textContent = count>0 ? '対局中' : '相手の再接続を待っています…';
   }
 
   function checkMatchStart(){
-    if(readyState.sente && readyState.gote) matchStarted = true;
+    if(readyState.sente && readyState.gote){
+      matchStarted = true;
+    }
   }
 
-  function updateReadyUI(){}
+  function updateReadyUI(){
+    if(!colorAssigned || !conn || !conn.open){
+      readyRow.style.display = 'none';
+      return;
+    }
+
+    // 勝負が始まったら準備完了ボタンを消す。
+    if(matchStarted){
+      readyRow.style.display = 'none';
+      return;
+    }
+
+    readyRow.style.display = 'flex';
+
+    const alreadyReady = !!readyState[myColor];
+    readyBtn.disabled = alreadyReady;
+    readyBtn.textContent = alreadyReady
+      ? '準備完了（相手を待っています）'
+      : '準備完了';
+  }
 
   function generateRoomNumber(){
     const n = (crypto.getRandomValues(new Uint32Array(1))[0] % 9) + 1;
@@ -1168,12 +1229,19 @@
       conn = c;
       conn.on('open', ()=>{
         peerCount++;
-        netSend({kind:'hello', name:myName});
-        broadcastSync();
+        // 相手が入室したら、ホスト側も必ず対局画面へ移動する。
         showMatchScreen();
         buildBoardDom();
         renderAll();
         updateGameMeta();
+
+        // 接続直後はまだ対局開始前。
+        matchStarted = false;
+        readyState = {sente:false, gote:false};
+
+        netSend({kind:'hello', name:myName});
+        broadcastSync();
+        updateReadyUI();
         updateNetStatus(peerCount);
       });
       conn.on('data', (data)=>{ handleRemote(data); });
@@ -1225,8 +1293,8 @@
       conn.on('open', ()=>{
         colorAssigned = true;
         netActive = true;
-        matchStarted = true;
-        readyState = {sente:true, gote:true};
+        matchStarted = false;
+        readyState = {sente:false, gote:false};
         roomInput.disabled = true;
         connectBtn.textContent = '入室済み';
         showMatchScreen();
@@ -1234,6 +1302,7 @@
         renderAll();
         updateGameMeta();
         netSend({kind:'hello', name:myName});
+        updateReadyUI();
         updateNetStatus(1);
       });
       conn.on('data', (data)=>{ handleRemote(data); });
@@ -1261,6 +1330,25 @@
 
   createRoomBtn.addEventListener('click', ()=>{ roomCreator=true; createRoom(); });
   connectBtn.addEventListener('click', ()=>{ roomCreator=false; connectRoom(); });
+
+  readyBtn.addEventListener('click', ()=>{
+    if(!colorAssigned || !conn || !conn.open || matchStarted) return;
+    if(readyState[myColor]) return;
+
+    if(isHost){
+      readyState.sente = true;
+      checkMatchStart();
+      broadcastSync();
+      updateReadyUI();
+      updateNetStatus(peerCount);
+    }else{
+      readyState.gote = true;
+      readyBtn.disabled = true;
+      readyBtn.textContent = '準備完了（相手を待っています）';
+      netSend({kind:'ready-request'});
+      updateReadyUI();
+    }
+  });
   backLobbyBtn.addEventListener('click', ()=>{
     if(conn) try{ conn.close(); }catch(e){}
     if(peer) try{ peer.destroy(); }catch(e){}
