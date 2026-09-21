@@ -98,9 +98,11 @@
     justify-content:center;
     cursor:pointer;
     filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));
+    transition:transform .1s ease;
   }
   .hand-piece.empty{visibility:hidden;}
   .hand-piece .pent{width:30px;height:32px;font-size:.95rem;}
+  .hand-piece.selected{transform:scale(1.15);}
   .hand-piece .badge{
     position:absolute;
     bottom:-4px;
@@ -203,8 +205,13 @@
   .owner-gote{transform:none;}
   .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
   .board.flipped .owner-sente .pent{transform:rotate(180deg);}
-  #battleScreen.flip-hands #handGote{order:2;}
+  #battleStatus, #roomCodeBox, #inviteRow, #readyRow, #countdownStatus{order:-10;}
+  .board-frame{order:0;}
+  #handGote{order:-1;}
+  #handSente{order:1;}
+  #battleScreen.flip-hands #handGote{order:1;}
   #battleScreen.flip-hands #handSente{order:-1;}
+  #restartRow, #status{order:10;}
 
   .cooldown-ring{
     position:absolute;
@@ -308,6 +315,42 @@
     z-index:10;
   }
   .drop-hint.show{display:block;}
+
+  .promote-prompt{
+    position:fixed;
+    left:50%;
+    bottom:18px;
+    transform:translateX(-50%);
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:12px;
+    padding:8px 10px;
+    display:none;
+    align-items:center;
+    gap:8px;
+    z-index:16;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
+    font-size:.78rem;
+    color:var(--ink);
+    box-shadow:0 4px 14px rgba(0,0,0,.2);
+  }
+  .promote-prompt.show{display:flex;}
+  .promote-prompt button{
+    font-family:inherit;
+    font-size:.78rem;
+    padding:7px 12px;
+    border-radius:8px;
+    border:1px solid var(--panel-border);
+    background:#fff;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .promote-prompt #promotePromoteBtn{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+    font-weight:700;
+  }
 </style>
 </head>
 <body>
@@ -340,6 +383,7 @@
     <div class="btnrow" id="readyRow" style="display:none;">
       <button class="action" id="readyBtn">準備完了</button>
     </div>
+    <div class="status" id="countdownStatus" style="display:none;font-size:1.6rem;font-weight:700;color:var(--accent);"></div>
 
     <div class="hand" id="handGote">
       <div class="hand-label">後手</div>
@@ -355,7 +399,7 @@
       <div class="hand-pieces" id="handSentePieces"></div>
     </div>
 
-    <div class="btnrow">
+    <div class="btnrow" id="restartRow">
       <button class="action" id="restartBtn">最初から</button>
     </div>
     <div class="status" id="status"></div>
@@ -363,6 +407,12 @@
 </div>
 
 <div class="drop-hint" id="dropHint">持ち駒を打つマスを選んでください</div>
+
+<div class="promote-prompt" id="promotePrompt">
+  <span>成りますか？</span>
+  <button class="action" id="promoteStayBtn" type="button">そのまま</button>
+  <button class="action" id="promotePromoteBtn" type="button">成る</button>
+</div>
 
 <div class="overlay" id="overlay">
   <div class="win-card">
@@ -388,6 +438,17 @@
   const overlayEl=document.getElementById('overlay');
   const winText=document.getElementById('winText');
   const dropHint=document.getElementById('dropHint');
+  const promotePrompt=document.getElementById('promotePrompt');
+  const promoteStayBtn=document.getElementById('promoteStayBtn');
+  const promotePromoteBtn=document.getElementById('promotePromoteBtn');
+  promoteStayBtn.addEventListener('click', ()=>{
+    const r=parseInt(promotePrompt.dataset.r,10), c=parseInt(promotePrompt.dataset.c,10);
+    if(Number.isInteger(r) && Number.isInteger(c)) attemptAction({kind:'decline-promote', r, c});
+  });
+  promotePromoteBtn.addEventListener('click', ()=>{
+    const r=parseInt(promotePrompt.dataset.r,10), c=parseInt(promotePrompt.dataset.c,10);
+    if(Number.isInteger(r) && Number.isInteger(c)) attemptAction({kind:'promote', r, c});
+  });
   const handSenteEl=document.getElementById('handSentePieces');
   const handGoteEl=document.getElementById('handGotePieces');
 
@@ -413,6 +474,8 @@
   // オンライン接続時はfalseから始まり、双方が「準備完了」を押した時点でtrueになる。
   let matchStarted = true;
   let readyState = {sente:false, gote:false};
+  // 双方が準備完了してから対局が始まるまでのカウントダウン用(performance.now()基準の絶対時刻。0はカウントダウン無し)。
+  let countdownUntil = 0;
 
   function freshBoard(){
     const b = Array.from({length:ROWS},()=>Array(COLS).fill(null));
@@ -452,8 +515,8 @@
     // 内部の座標(r,c)は変えず、DOMへの並び順だけを反転させる。
     const flipped = myColor==='gote';
     boardEl.classList.toggle('flipped', flipped);
-    const wrapEl = document.querySelector('.wrap');
-    if(wrapEl) wrapEl.classList.toggle('flip-hands', flipped);
+    const battleScreenEl = document.getElementById('battleScreen');
+    if(battleScreenEl) battleScreenEl.classList.toggle('flip-hands', flipped);
 
     boardEl.innerHTML='';
     cells=[];
@@ -722,6 +785,7 @@
   function renderAll(){
     renderBoard();
     renderHands();
+    updatePromotePrompt();
     fitBoard();
   }
 
@@ -756,22 +820,29 @@
             ring.style.setProperty('--pct',pct+'%');
             pieceEl.appendChild(ring);
           }
-          // offer promotion tap: if this square is eligible and unpromoted, a small tap-again toggles promote
-          if(lastMovedForPromotionOffer && lastMovedForPromotionOffer.r===r && lastMovedForPromotionOffer.c===c){
-            pieceEl.title='もう一度タップすると成れます';
-            pieceEl.addEventListener('click',promoteHandlerOnce, {once:true, capture:true});
-          }
           cellEl.appendChild(pieceEl);
         }
       }
     }
   }
 
-  function promoteHandlerOnce(e){
-    e.stopPropagation();
-    if(!lastMovedForPromotionOffer) return;
-    const {r,c} = lastMovedForPromotionOffer;
-    attemptAction({kind:'promote', r, c});
+  // 成れる駒を動かした直後、成るかどうかをボタンで選べるようにする。
+  function updatePromotePrompt(){
+    if(lastMovedForPromotionOffer){
+      const {r,c} = lastMovedForPromotionOffer;
+      const p = board[r] && board[r][c];
+      if(p && isMine(p.owner)){
+        const key = p.type;
+        const promotedGlyph = KANJI['+'+key] || KANJI[key];
+        promoteStayBtn.textContent = KANJI[key] + 'のまま';
+        promotePromoteBtn.textContent = promotedGlyph + 'に成る';
+        promotePrompt.dataset.r = r;
+        promotePrompt.dataset.c = c;
+        promotePrompt.classList.add('show');
+        return;
+      }
+    }
+    promotePrompt.classList.remove('show');
   }
 
   function renderHands(){
@@ -834,7 +905,19 @@
       }
       if(needsRender) renderBoard();
     }
+    updateCountdownDisplay();
     requestAnimationFrame(tick);
+  }
+
+  function updateCountdownDisplay(){
+    if(countdownUntil>0 && !matchStarted){
+      const remain = countdownUntil-now();
+      const secs = Math.max(1, Math.ceil(remain/1000));
+      countdownStatusEl.textContent = '対局開始まで '+secs+'…';
+      countdownStatusEl.style.display = 'block';
+    } else {
+      countdownStatusEl.style.display = 'none';
+    }
   }
 
   // ---- online play (PeerJS: serverless WebRTC) ----
@@ -857,6 +940,7 @@
   const roomCodeValue = document.getElementById('roomCodeValue');
   const readyRow = document.getElementById('readyRow');
   const readyBtn = document.getElementById('readyBtn');
+  const countdownStatusEl = document.getElementById('countdownStatus');
   const lobbyScreen = document.getElementById('lobbyScreen');
   const battleScreen = document.getElementById('battleScreen');
 
@@ -903,11 +987,12 @@
   // Validates + applies one action to the single authoritative board.
   // Used directly for local/offline play, and by the host for both its own
   // clicks and requests coming in from the other peer.
-  function applyActionAsHost(action, actorColor=myColor){
-    // 自分の駒以外を動かせなくする識別チェックは、オンライン対局中だけ必要。
-    // オフライン(この端末だけ)のときは myColor が null のままなので、
-    // このチェックを常に適用すると一手目以降ずっと弾かれてしまう。
-    const requireActor = netActive;
+  function applyActionAsHost(action, actorColor){
+    // actorColor はリモート(相手)からのリクエストを処理するときだけ明示的に渡す。
+    // ホスト自身の操作は常に信頼し、識別チェックで弾かれることはない。
+    // (以前はmyColorのデフォルト引数に依存しており、タイミング次第でホスト自身の
+    //  連続した操作まで誤って弾かれることがあったため、明示指定のみに変更した)
+    const requireActor = actorColor !== undefined;
     switch(action.kind){
       case 'move': {
         const {sr,sc,dr,dc,owner} = action;
@@ -932,7 +1017,17 @@
         const {r,c} = action;
         const p = board[r] && board[r][c];
         if(!p || p.promoted || !canPromote(p.type)) return false;
+        if(requireActor && p.owner!==actorColor) return false;
         performPromote(r,c);
+        return true;
+      }
+      case 'decline-promote': {
+        const {r,c} = action;
+        if(!lastMovedForPromotionOffer || lastMovedForPromotionOffer.r!==r || lastMovedForPromotionOffer.c!==c) return false;
+        const p = board[r] && board[r][c];
+        if(requireActor && p && p.owner!==actorColor) return false;
+        lastMovedForPromotionOffer = null;
+        renderAll();
         return true;
       }
       case 'restart': {
@@ -975,7 +1070,8 @@
       winner: winnerColor,
       promoOffer: lastMovedForPromotionOffer ? {r:lastMovedForPromotionOffer.r, c:lastMovedForPromotionOffer.c} : null,
       matchStarted,
-      readyState: {sente:readyState.sente, gote:readyState.gote}
+      readyState: {sente:readyState.sente, gote:readyState.gote},
+      countdownRemain: countdownUntil>0 ? Math.max(0, countdownUntil-now()) : 0
     };
   }
 
@@ -993,6 +1089,7 @@
     lastMovedForPromotionOffer = state.promoOffer;
     if(typeof state.matchStarted==='boolean') matchStarted = state.matchStarted;
     if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
+    countdownUntil = state.countdownRemain>0 ? now()+state.countdownRemain : 0;
     updateReadyUI();
     updateNetStatus(1);
     renderAll();
@@ -1059,13 +1156,22 @@
   }
 
   function checkMatchStart(){
-    if(readyState.sente && readyState.gote){
-      matchStarted = true;
+    // ホストだけが呼ぶ。両者が準備完了したら、即開始ではなく3秒のカウントダウンを挟む。
+    if(readyState.sente && readyState.gote && !matchStarted && countdownUntil<=0){
+      countdownUntil = now()+3000;
+      setTimeout(()=>{
+        if(!matchStarted){
+          matchStarted = true;
+          countdownUntil = 0;
+          broadcastSync();
+          updateReadyUI();
+        }
+      }, 3000);
     }
   }
 
   function updateReadyUI(){
-    if(!colorAssigned || matchStarted){
+    if(!colorAssigned || matchStarted || countdownUntil>0){
       readyRow.style.display = 'none';
       return;
     }
