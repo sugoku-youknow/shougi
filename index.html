@@ -330,6 +330,10 @@
 
   <div id="battleScreen" class="screen">
     <div class="status" id="battleStatus"></div>
+    <div id="roomCodeBox" style="display:none;text-align:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+      <div style="font-size:.68rem;color:#7A6A55;letter-spacing:.05em;">部屋番号</div>
+      <div id="roomCodeValue" style="font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.2;letter-spacing:.15em;"></div>
+    </div>
     <div class="btnrow" id="inviteRow" style="display:none;">
       <button class="action" id="inviteBtn">招待リンクをコピー</button>
     </div>
@@ -849,6 +853,8 @@
   const offlineBtn = document.getElementById('offlineBtn');
   const inviteBtn = document.getElementById('inviteBtn');
   const inviteRow = document.getElementById('inviteRow');
+  const roomCodeBox = document.getElementById('roomCodeBox');
+  const roomCodeValue = document.getElementById('roomCodeValue');
   const readyRow = document.getElementById('readyRow');
   const readyBtn = document.getElementById('readyBtn');
   const lobbyScreen = document.getElementById('lobbyScreen');
@@ -1107,10 +1113,13 @@
       roomInput.disabled = true;
       connectBtn.textContent = '入室済み';
       inviteRow.style.display = 'flex';
+      roomCodeValue.textContent = code;
+      roomCodeBox.style.display = 'block';
       buildBoardDom();
       renderAll();
       updateNetStatus(0);
       updateReadyUI();
+      requestAnimationFrame(fitBoard);
     });
 
     peer.on('connection', (c)=>{
