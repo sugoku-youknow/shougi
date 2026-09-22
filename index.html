@@ -206,12 +206,6 @@
   .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
   .board.flipped .owner-sente .pent{transform:rotate(180deg);}
   #battleStatus, #roomCodeBox, #readyRow, #countdownStatus{order:-10;}
-  #countdownStatus{
-    display:block !important;
-    visibility:hidden;
-    min-height:1.6em;
-    line-height:1.2;
-  }
   .board-frame{order:0;}
   #handGote{order:-1;}
   #handSente{order:1;}
@@ -383,7 +377,7 @@
       <div style="font-size:.68rem;color:#7A6A55;letter-spacing:.05em;">部屋番号</div>
       <div id="roomCodeValue" style="font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.2;letter-spacing:.15em;"></div>
     </div>
-      <div class="btnrow" id="readyRow" style="display:none;">
+    <div class="btnrow" id="readyRow" style="display:none;">
       <button class="action" id="readyBtn">準備完了</button>
     </div>
     <div class="status" id="countdownStatus" style="display:none;font-size:1.6rem;font-weight:700;color:var(--accent);"></div>
@@ -433,7 +427,6 @@
     P:'歩', L:'香', N:'桂', S:'銀', G:'金', B:'角', R:'飛', K:'王',
     '+P':'と', '+L':'成香', '+N':'成桂', '+S':'成銀', '+B':'馬', '+R':'龍'
   };
-  // second king glyph for gote so both sides read distinctly
   function kingGlyph(owner){ return owner==='sente' ? '王' : '玉'; }
 
   const boardEl=document.getElementById('board');
@@ -455,7 +448,6 @@
   const handSenteEl=document.getElementById('handSentePieces');
   const handGoteEl=document.getElementById('handGotePieces');
 
-  // 駒の種類ごとのクールダウン（ミリ秒）。UIはなく、ここで直接調整する。
   const PIECE_COOLDOWN_MS = {
     P: 2500,  // 歩
     L: 2500,  // 香
@@ -473,11 +465,8 @@
   let board, hands, selected, dropSelection, gameOver, winnerColor=null, cells=[];
   let netRoom=null, netSend=null, myColor=null, colorAssigned=false, netActive=false, isHost=false, roomCreator=false;
   let syncSeq=0, lastAppliedSeq=-1;
-  // matchStarted: オフライン(この端末だけ)のときは常にtrueで即プレイ可能。
-  // オンライン接続時はfalseから始まり、双方が「準備完了」を押した時点でtrueになる。
   let matchStarted = true;
   let readyState = {sente:false, gote:false};
-  // 双方が準備完了してから対局が始まるまでのカウントダウン用(performance.now()基準の絶対時刻。0はカウントダウン無し)。
   let countdownUntil = 0;
 
   function freshBoard(){
@@ -514,8 +503,6 @@
   }
 
   function buildBoardDom(){
-    // 後手側のプレイヤーは、自分の玉が画面下に来るよう盤面を180度反転して表示する。
-    // 内部の座標(r,c)は変えず、DOMへの並び順だけを反転させる。
     const flipped = myColor==='gote';
     boardEl.classList.toggle('flipped', flipped);
     const battleScreenEl = document.getElementById('battleScreen');
@@ -538,9 +525,6 @@
     }
   }
 
-  function isPromotedType(t){ return t.startsWith('+'); }
-  function baseType(piece){ return piece.promoted ? '+'+piece.type : piece.type; }
-
   function dir(owner){ return owner==='sente' ? -1 : 1; }
   function inZone(owner,r){
     return owner==='sente' ? r<=2 : r>=6;
@@ -548,8 +532,10 @@
   function lastRow(owner){ return owner==='sente' ? 0 : 8; }
   function lastTwoRows(owner){ return owner==='sente' ? [0,1] : [7,8]; }
 
-  function slideMoves(r,c,owner,directions,board){
+  function slideMoves(r,c,owner,board){
     const moves=[];
+    const p=board[r][c];
+    const directions = (p.type==='B'||p.promoted&&p.type==='B') ? [[1,1],[1,-1],[-1,1],[-1,-1]] : [[1,0],[-1,0],[0,1],[0,-1]];
     for(const [dr,dc] of directions){
       let nr=r+dr, nc=c+dc;
       while(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS){
@@ -585,16 +571,16 @@
     const key = p.promoted ? '+'+p.type : p.type;
     switch(key){
       case 'P': return stepMoves(r,c,p.owner,[[d,0]],board);
-      case 'L': return slideMoves(r,c,p.owner,[[d,0]],board);
+      case 'L': return slideMoves(r,c,p.owner,board);
       case 'N': return stepMoves(r,c,p.owner,[[2*d,-1],[2*d,1]],board);
       case 'S': return stepMoves(r,c,p.owner,[[d,-1],[d,0],[d,1],[-d,-1],[-d,1]],board);
       case 'G': case '+P': case '+L': case '+N': case '+S':
         return stepMoves(r,c,p.owner,goldDeltas(d),board);
-      case 'B': return slideMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board);
-      case 'R': return slideMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board);
-      case '+B': return slideMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board)
+      case 'B': return slideMoves(r,c,p.owner,board);
+      case 'R': return slideMoves(r,c,p.owner,board);
+      case '+B': return slideMoves(r,c,p.owner,board)
                   .concat(stepMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board));
-      case '+R': return slideMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1]],board)
+      case '+R': return slideMoves(r,c,p.owner,board)
                   .concat(stepMoves(r,c,p.owner,[[1,1],[1,-1],[-1,1],[-1,-1]],board));
       case 'K': return stepMoves(r,c,p.owner,[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],board);
     }
@@ -622,9 +608,9 @@
     // dropping a hand piece
     if(dropSelection){
       const {owner,type} = dropSelection;
-      if(clicked){ // can't drop on occupied square, but allow re-selecting own piece instead
+      if(clicked){
         cancelDrop();
-        if(clicked.owner && isMine(clicked.owner)) selectSquare(r,c);
+        if(clicked.owner && !isCooling(clicked) && isMine(clicked.owner)) selectSquare(r,c);
         return;
       }
       if(!dropIsLegal(owner,type,r,c)){
@@ -646,8 +632,7 @@
         renderAll();
         return;
       }
-      // clicking another of own pieces switches selection
-      if(clicked && clicked.owner===board[sr][sc].owner && isMine(clicked.owner)){
+      if(clicked && clicked.owner===board[sr][sc].owner && !isCooling(clicked) && isMine(clicked.owner)){
         selectSquare(r,c);
         return;
       }
@@ -659,8 +644,10 @@
       flashStatus('相手の駒は動かせません');
       return;
     }
-    if(clicked){
+    if(clicked && !isCooling(clicked)){
       selectSquare(r,c);
+    } else if(clicked && isCooling(clicked)){
+      flashStatus('この駒はクールダウン中です');
     }
   }
 
@@ -706,8 +693,6 @@
       if(mustPromote(p.type,p.owner,dr)){
         promoted = true;
       } else if(enteringZone){
-        // non-blocking async choice; place piece first, unpromoted by default,
-        // then offer a quick promote toggle via double-tap style follow-up
         promoted = false;
       }
     }
@@ -723,7 +708,6 @@
   let lastMovedForPromotionOffer=null;
 
   function checkKingCapture(){
-    // safety net: scan board for missing kings in case of edge cases
     let senteKing=false, goteKing=false;
     for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
       const p=board[r][c];
@@ -827,7 +811,6 @@
     }
   }
 
-  // 成れる駒を動かした直後、成るかどうかをボタンで選べるようにする。
   function updatePromotePrompt(){
     if(lastMovedForPromotionOffer){
       const {r,c} = lastMovedForPromotionOffer;
@@ -896,7 +879,6 @@
   document.getElementById('restartBtn').addEventListener('click',localRestart);
   document.getElementById('playAgain').addEventListener('click',localRestart);
 
-  // animate cooldown rings smoothly
   function tick(){
     if(!gameOver){
       let needsRender=false;
@@ -915,20 +897,12 @@
       const remain = countdownUntil-now();
       const secs = Math.max(1, Math.ceil(remain/1000));
       countdownStatusEl.textContent = '対局開始まで '+secs+'…';
-      countdownStatusEl.style.visibility = 'visible';
+      countdownStatusEl.style.display = 'block';
     } else {
-      countdownStatusEl.style.visibility = 'hidden';
+      countdownStatusEl.style.display = 'none';
     }
   }
 
-  // ---- online play (PeerJS: serverless WebRTC) ----
-  // Architecture: one peer is the "host" (deterministically = whoever created
-  // the room, and is always sente). The host runs the one true copy of the
-  // game and is the only one who ever mutates board/hands directly. The
-  // other peer only *requests* actions and renders whatever the host
-  // broadcasts. This avoids the two independent copies of state drifting
-  // apart when both players act at nearly the same moment, and avoids
-  // relying on the two devices' clocks agreeing on cooldowns.
   const netStatusEl = document.getElementById('netStatus');
   const battleStatusEl = document.getElementById('battleStatus');
   const roomInput = document.getElementById('roomInput');
@@ -943,7 +917,6 @@
   const lobbyScreen = document.getElementById('lobbyScreen');
   const battleScreen = document.getElementById('battleScreen');
 
-  // ロビー画面（部屋番号の入力）と対局画面（盤・持ち駒・相手情報）を切り替える。
   function showScreen(name){
     lobbyScreen.classList.toggle('active', name==='lobby');
     battleScreen.classList.toggle('active', name==='battle');
@@ -952,7 +925,6 @@
     }
   }
 
-  // 端末の余白いっぱいまで盤面（正方形）を広げる。
   function fitBoard(){
     if(!battleScreen.classList.contains('active')) return;
     boardEl.style.width = '';
@@ -966,8 +938,8 @@
       if(rect.height>0) usedHeight += rect.height;
     });
     const gapPx = 10 * Math.max(0, battleScreen.children.length-1);
-    const wrapPadding = 42; // .wrap の上下パディング分の余白
-    const framePadding = 20; // .board-frame のpadding(10px)*2
+    const wrapPadding = 42;
+    const framePadding = 20;
     const availableHeight = window.innerHeight - usedHeight - gapPx - wrapPadding - framePadding;
     const availableWidth = battleScreen.clientWidth - framePadding;
     const size = Math.max(200, Math.floor(Math.min(availableWidth, availableHeight)));
@@ -983,21 +955,14 @@
   const ID_PREFIX = 'jp-freetime-shogi-';
   let peer=null, conn=null, peerCount=0;
 
-  // Validates + applies one action to the single authoritative board.
-  // Used directly for local/offline play, and by the host for both its own
-  // clicks and requests coming in from the other peer.
   function applyActionAsHost(action, actorColor){
-    // actorColor はリモート(相手)からのリクエストを処理するときだけ明示的に渡す。
-    // ホスト自身の操作は常に信頼し、識別チェックで弾かれることはない。
-    // (以前はmyColorのデフォルト引数に依存しており、タイミング次第でホスト自身の
-    //  連続した操作まで誤って弾かれることがあったため、明示指定のみに変更した)
     const requireActor = actorColor !== undefined;
     switch(action.kind){
       case 'move': {
         const {sr,sc,dr,dc,owner} = action;
         const p = board[sr] && board[sr][sc];
-        // クールダウンは表示のみ。クールダウン中の駒も操作できる。
-        if(!p || p.owner!==owner) return false;
+        // クールダウンチェックは操作対象の駒のみ行う
+        if(!p || p.owner!==owner || isCooling(p)) return false;
         if(requireActor && p.owner!==actorColor) return false;
         const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
         if(!legal) return false;
@@ -1037,7 +1002,6 @@
     return false;
   }
 
-  // Every click funnels through here instead of mutating state directly.
   function attemptAction(action){
     if(netActive && colorAssigned && !matchStarted){
       flashStatus('両者が「準備完了」を押すと対局が始まります');
@@ -1075,6 +1039,7 @@
   }
 
   function applySyncState(state){
+    const wasMatchStarted = matchStarted;
     board = state.board.map(row=>row.map(p=>{
       if(!p) return null;
       return {type:p.type, owner:p.owner, promoted:p.promoted, cooldownUntil: now2ms(p.remain)};
@@ -1089,6 +1054,12 @@
     if(typeof state.matchStarted==='boolean') matchStarted = state.matchStarted;
     if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
     countdownUntil = state.countdownRemain>0 ? now()+state.countdownRemain : 0;
+    
+    // 対局が開始された瞬間に将棋盤の位置・向きのずれを解消
+    if(!wasMatchStarted && matchStarted){
+      buildBoardDom();
+    }
+    
     updateReadyUI();
     updateNetStatus(1);
     renderAll();
@@ -1102,7 +1073,7 @@
 
   function broadcastSync(){
     const state = serializeState();
-    state.seq = ++syncSeq; // monotonically increasing, so a late/out-of-order sync can never overwrite a newer one
+    state.seq = ++syncSeq;
     netBroadcast({kind:'sync', state});
   }
 
@@ -1130,7 +1101,7 @@
     }
     if(data.kind==='sync'){
       if(typeof data.state.seq==='number'){
-        if(data.state.seq<=lastAppliedSeq) return; // stale sync, arrived out of order — ignore it
+        if(data.state.seq<=lastAppliedSeq) return;
         lastAppliedSeq = data.state.seq;
       }
       applySyncState(data.state);
@@ -1141,7 +1112,7 @@
     if(!colorAssigned){
       setBattleStatus(count>0
         ? '接続中…'
-        : '相手の参加を待っています（部屋番号を相手に伝えてください）');
+        : '相手の参加を待っています（部屋番号を共有してください）');
       return;
     }
     const label = myColor==='sente' ? '先手' : '後手';
@@ -1155,15 +1126,16 @@
   }
 
   function checkMatchStart(){
-    // ホストだけが呼ぶ。両者が準備完了したら、即開始ではなく3秒のカウントダウンを挟む。
     if(readyState.sente && readyState.gote && !matchStarted && countdownUntil<=0){
       countdownUntil = now()+3000;
       setTimeout(()=>{
         if(!matchStarted){
           matchStarted = true;
           countdownUntil = 0;
+          buildBoardDom();
           broadcastSync();
           updateReadyUI();
+          renderAll();
         }
       }, 3000);
     }
@@ -1189,7 +1161,6 @@
     if(conn && conn.open) conn.send(data);
   }
 
-  // 部屋を作った側を必ず先手・ホストにする。
   function createRoom(){
     if(netActive) return;
     if(typeof Peer === 'undefined'){
@@ -1338,11 +1309,12 @@
       updateReadyUI();
       updateNetStatus(peerCount);
     } else {
-      readyState.gote = true; // 楽観的にローカル表示だけ先に更新（正はホストからのsyncで確定）
+      readyState.gote = true;
       netSend({kind:'ready-request'});
       updateReadyUI();
     }
   });
+
   const urlParams = new URLSearchParams(location.search);
   const initialRoom = urlParams.get('room');
   if(initialRoom){
