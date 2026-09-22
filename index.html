@@ -492,14 +492,14 @@
   const handGoteEl=document.getElementById('handGotePieces');
 
   const PIECE_COOLDOWN_MS = {
-    P: 2500,  // 歩
-    L: 2500,  // 香
-    N: 2500,  // 桂
-    S: 2500,  // 銀
-    G: 2500,  // 金
-    B: 3500,  // 角
+    P: 1000,  // 歩
+    L: 1500,  // 香
+    N: 1500,  // 桂
+    S: 2000,  // 銀
+    G: 2000,  // 金
+    B: 3000,  // 角
     R: 3500,  // 飛
-    K: 1500   // 王/玉
+    K: 1000   // 王/玉
   };
   function cooldownFor(type){
     return PIECE_COOLDOWN_MS[type] != null ? PIECE_COOLDOWN_MS[type] : 2500;
