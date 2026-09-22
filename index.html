@@ -205,7 +205,13 @@
   .owner-gote{transform:none;}
   .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
   .board.flipped .owner-sente .pent{transform:rotate(180deg);}
-  #battleStatus, #roomCodeBox, #inviteRow, #readyRow, #countdownStatus{order:-10;}
+  #battleStatus, #roomCodeBox, #readyRow, #countdownStatus{order:-10;}
+  #countdownStatus{
+    display:block !important;
+    visibility:hidden;
+    min-height:1.6em;
+    line-height:1.2;
+  }
   .board-frame{order:0;}
   #handGote{order:-1;}
   #handSente{order:1;}
@@ -377,10 +383,7 @@
       <div style="font-size:.68rem;color:#7A6A55;letter-spacing:.05em;">部屋番号</div>
       <div id="roomCodeValue" style="font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.2;letter-spacing:.15em;"></div>
     </div>
-    <div class="btnrow" id="inviteRow" style="display:none;">
-      <button class="action" id="inviteBtn">招待リンクをコピー</button>
-    </div>
-    <div class="btnrow" id="readyRow" style="display:none;">
+      <div class="btnrow" id="readyRow" style="display:none;">
       <button class="action" id="readyBtn">準備完了</button>
     </div>
     <div class="status" id="countdownStatus" style="display:none;font-size:1.6rem;font-weight:700;color:var(--accent);"></div>
@@ -621,7 +624,7 @@
       const {owner,type} = dropSelection;
       if(clicked){ // can't drop on occupied square, but allow re-selecting own piece instead
         cancelDrop();
-        if(clicked.owner && !isCooling(clicked) && isMine(clicked.owner)) selectSquare(r,c);
+        if(clicked.owner && isMine(clicked.owner)) selectSquare(r,c);
         return;
       }
       if(!dropIsLegal(owner,type,r,c)){
@@ -644,7 +647,7 @@
         return;
       }
       // clicking another of own pieces switches selection
-      if(clicked && clicked.owner===board[sr][sc].owner && !isCooling(clicked) && isMine(clicked.owner)){
+      if(clicked && clicked.owner===board[sr][sc].owner && isMine(clicked.owner)){
         selectSquare(r,c);
         return;
       }
@@ -656,10 +659,8 @@
       flashStatus('相手の駒は動かせません');
       return;
     }
-    if(clicked && !isCooling(clicked)){
+    if(clicked){
       selectSquare(r,c);
-    } else if(clicked && isCooling(clicked)){
-      flashStatus('この駒はクールダウン中です');
     }
   }
 
@@ -914,9 +915,9 @@
       const remain = countdownUntil-now();
       const secs = Math.max(1, Math.ceil(remain/1000));
       countdownStatusEl.textContent = '対局開始まで '+secs+'…';
-      countdownStatusEl.style.display = 'block';
+      countdownStatusEl.style.visibility = 'visible';
     } else {
-      countdownStatusEl.style.display = 'none';
+      countdownStatusEl.style.visibility = 'hidden';
     }
   }
 
@@ -934,8 +935,6 @@
   const createRoomBtn = document.getElementById('createRoomBtn');
   const connectBtn = document.getElementById('connectBtn');
   const offlineBtn = document.getElementById('offlineBtn');
-  const inviteBtn = document.getElementById('inviteBtn');
-  const inviteRow = document.getElementById('inviteRow');
   const roomCodeBox = document.getElementById('roomCodeBox');
   const roomCodeValue = document.getElementById('roomCodeValue');
   const readyRow = document.getElementById('readyRow');
@@ -997,8 +996,8 @@
       case 'move': {
         const {sr,sc,dr,dc,owner} = action;
         const p = board[sr] && board[sr][sc];
-        // クールダウンは「動かした駒だけ」に適用する。
-        if(!p || p.owner!==owner || isCooling(p)) return false;
+        // クールダウンは表示のみ。クールダウン中の駒も操作できる。
+        if(!p || p.owner!==owner) return false;
         if(requireActor && p.owner!==actorColor) return false;
         const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
         if(!legal) return false;
@@ -1142,7 +1141,7 @@
     if(!colorAssigned){
       setBattleStatus(count>0
         ? '接続中…'
-        : '相手の参加を待っています（招待リンクを送ってください）');
+        : '相手の参加を待っています（部屋番号を相手に伝えてください）');
       return;
     }
     const label = myColor==='sente' ? '先手' : '後手';
@@ -1218,7 +1217,6 @@
       readyState = {sente:false, gote:false};
       roomInput.disabled = true;
       connectBtn.textContent = '入室済み';
-      inviteRow.style.display = 'flex';
       roomCodeValue.textContent = code;
       roomCodeBox.style.display = 'block';
       buildBoardDom();
@@ -1345,16 +1343,6 @@
       updateReadyUI();
     }
   });
-  inviteBtn.addEventListener('click', async ()=>{
-    const url = location.origin + location.pathname + '?room=' + encodeURIComponent(roomInput.value.trim());
-    try{
-      await navigator.clipboard.writeText(url);
-      flashStatus('招待リンクをコピーしました');
-    }catch(e){
-      flashStatus(url);
-    }
-  });
-
   const urlParams = new URLSearchParams(location.search);
   const initialRoom = urlParams.get('room');
   if(initialRoom){
