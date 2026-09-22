@@ -968,7 +968,7 @@
     if(countdownUntil>0 && !matchStarted){
       const remain = countdownUntil-now();
       const secs = Math.max(1, Math.ceil(remain/1000));
-      countdownStatusEl.textContent = '対局開始まで '+secs+'…';
+      countdownStatusEl.textContent = secs+'…';
       countdownStatusEl.style.display = 'block';
     } else {
       countdownStatusEl.style.display = 'none';
@@ -1020,7 +1020,7 @@
     const availableHeight = window.innerHeight - usedHeight - gapPx - wrapPadding - framePadding;
     const availableWidth = battleScreen.clientWidth - framePadding;
     // マス目を正方形(1:1)ではなく縦長(幅:高さ = 1:1.1)にする
-    const ASPECT = 1.1;
+    const ASPECT = 1.2;
     const width = Math.max(200, Math.floor(Math.min(availableWidth, availableHeight/ASPECT)));
     const height = Math.floor(width*ASPECT);
     boardEl.style.width = width+'px';
