@@ -133,7 +133,7 @@
   .board{
     position:relative;
     width:min(94vw,560px);
-    height:min(94vw,560px);
+    height:min(103.4vw,616px);
     background:var(--wood);
     background-image:linear-gradient(135deg, var(--wood) 0%, var(--wood-dark) 100%);
     display:grid;
@@ -216,10 +216,14 @@
     visibility:visible;
   }
   /* 修正5: battleStatusの文言が対局開始前後で長さが変わり、
-     折り返し行数が変化して盤がずれるため、常に2行分の高さを確保する */
+     折り返し行数が変化して盤がずれるため、高さを完全に固定する
+     （端末やフォントによって3行になっても、はみ出た分は表示しないことで
+     高さの変動そのものを起こさない） */
   #battleStatus{
-    min-height:2.8em;
-    line-height:1.4;
+    height:2.9em;
+    max-height:2.9em;
+    overflow:hidden;
+    line-height:1.45;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -809,7 +813,6 @@
     renderBoard();
     renderHands();
     updatePromotePrompt();
-    fitBoard();
   }
 
   function renderBoard(){
@@ -1016,9 +1019,12 @@
     const framePadding = 20;
     const availableHeight = window.innerHeight - usedHeight - gapPx - wrapPadding - framePadding;
     const availableWidth = battleScreen.clientWidth - framePadding;
-    const size = Math.max(200, Math.floor(Math.min(availableWidth, availableHeight)));
-    boardEl.style.width = size+'px';
-    boardEl.style.height = size+'px';
+    // マス目を正方形(1:1)ではなく縦長(幅:高さ = 1:1.1)にする
+    const ASPECT = 1.1;
+    const width = Math.max(200, Math.floor(Math.min(availableWidth, availableHeight/ASPECT)));
+    const height = Math.floor(width*ASPECT);
+    boardEl.style.width = width+'px';
+    boardEl.style.height = height+'px';
   }
   window.addEventListener('resize', fitBoard);
   window.addEventListener('orientationchange', ()=>{ setTimeout(fitBoard, 100); });
