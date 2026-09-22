@@ -206,6 +206,15 @@
   .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
   .board.flipped .owner-sente .pent{transform:rotate(180deg);}
   #battleStatus, #roomCodeBox, #readyRow{order:-10;}
+  /* 修正4: readyRowをdisplay:noneで消すと高さが無くなり盤が上下にずれるため、
+     常に高さを確保したままvisibilityで表示/非表示を切り替える */
+  #readyRow{
+    visibility:hidden;
+    min-height:38px;
+  }
+  #readyRow.visible{
+    visibility:visible;
+  }
   .board-frame{order:0;}
   #handGote{order:-1;}
   #handSente{order:1;}
@@ -396,7 +405,7 @@
       <div style="font-size:.68rem;color:#7A6A55;letter-spacing:.05em;">部屋番号</div>
       <div id="roomCodeValue" style="font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.2;letter-spacing:.15em;"></div>
     </div>
-    <div class="btnrow" id="readyRow" style="display:none;">
+    <div class="btnrow" id="readyRow">
       <button class="action" id="readyBtn">準備完了</button>
     </div>
 
@@ -1191,23 +1200,14 @@
   }
 
   function updateReadyUI(){
-    // 準備完了欄そのものは常にレイアウト上に残す
-    readyRow.style.display = 'flex';
-
     if(!colorAssigned || matchStarted || countdownUntil>0){
-      // 見えなくするだけで、スペースは残す
-      readyRow.style.visibility = 'hidden';
-      readyBtn.disabled = true;
+      readyRow.classList.remove('visible');
       return;
     }
-
-    readyRow.style.visibility = 'visible';
-
+    readyRow.classList.add('visible');
     const already = readyState[myColor];
     readyBtn.disabled = already;
-    readyBtn.textContent = already
-      ? '準備完了（相手を待っています）'
-      : '準備完了';
+    readyBtn.textContent = already ? '準備完了（相手を待っています）' : '準備完了';
   }
 
   function generateRoomNumber(){
