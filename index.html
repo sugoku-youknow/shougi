@@ -205,13 +205,31 @@
   .owner-gote{transform:none;}
   .board:not(.flipped) .owner-gote .pent{transform:rotate(180deg);}
   .board.flipped .owner-sente .pent{transform:rotate(180deg);}
-  #battleStatus, #roomCodeBox, #readyRow, #countdownStatus{order:-10;}
+  #battleStatus, #roomCodeBox, #readyRow{order:-10;}
   .board-frame{order:0;}
   #handGote{order:-1;}
   #handSente{order:1;}
   #battleScreen.flip-hands #handGote{order:1;}
   #battleScreen.flip-hands #handSente{order:-1;}
   #restartRow, #status{order:10;}
+
+  /* 修正2: カウントダウンUIをレイアウトから独立させる（Absolute Positioning） */
+  #countdownStatus{
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 16px 32px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-align: center;
+    pointer-events: none;
+  }
 
   .cooldown-ring{
     position:absolute;
@@ -267,7 +285,7 @@
     display:none;
     align-items:center;
     justify-content:center;
-    z-index:20;
+    z-index:40; /* 修正: Z-Indexの調整 */
   }
   .overlay.show{display:flex;}
   .win-card{
@@ -316,40 +334,41 @@
   }
   .drop-hint.show{display:block;}
 
+  /* 修正3: 「成る」UIを画像（駒要素）化し、直上に表示するためのスタイル変更 */
   .promote-prompt{
     position:fixed;
-    left:50%;
-    bottom:18px;
-    transform:translateX(-50%);
-    background:var(--panel);
-    border:1px solid var(--panel-border);
-    border-radius:12px;
-    padding:8px 10px;
     display:none;
     align-items:center;
     gap:8px;
-    z-index:16;
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;
-    font-size:.78rem;
-    color:var(--ink);
-    box-shadow:0 4px 14px rgba(0,0,0,.2);
+    z-index:100;
+    background:rgba(255, 255, 255, 0.85);
+    padding:8px 12px;
+    border-radius:12px;
+    box-shadow:0 6px 16px rgba(0,0,0,.3);
   }
   .promote-prompt.show{display:flex;}
-  .promote-prompt button{
-    font-family:inherit;
-    font-size:.78rem;
-    padding:7px 12px;
-    border-radius:8px;
-    border:1px solid var(--panel-border);
-    background:#fff;
-    color:var(--ink);
-    cursor:pointer;
+  .promote-btn{
+    width: 48px;
+    height: 52px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border-radius: 6px;
+    transition: transform 0.1s ease;
   }
-  .promote-prompt #promotePromoteBtn{
-    background:var(--accent);
-    color:#fff;
-    border-color:var(--accent);
-    font-weight:700;
+  .promote-btn:active{
+    transform: scale(0.95);
+  }
+  /* ボタン内部に配置する駒要素の調整 */
+  .promote-btn .piece {
+    width: 40px;
+    height: 40px;
+    pointer-events: none; /* クリックイベントは親の.promote-btnで受ける */
+  }
+  .promote-btn .pent {
+    font-size: 1.1rem;
   }
 </style>
 </head>
@@ -380,7 +399,9 @@
     <div class="btnrow" id="readyRow" style="display:none;">
       <button class="action" id="readyBtn">準備完了</button>
     </div>
-    <div class="status" id="countdownStatus" style="display:none;font-size:1.6rem;font-weight:700;color:var(--accent);"></div>
+
+    <!-- 修正2: style属性を整理し、CSS側でレイアウトを独立管理 -->
+    <div id="countdownStatus" style="display:none;"></div>
 
     <div class="hand" id="handGote">
       <div class="hand-label">後手</div>
@@ -405,10 +426,10 @@
 
 <div class="drop-hint" id="dropHint">持ち駒を打つマスを選んでください</div>
 
+<!-- 修正3: 「成る」選択肢をテキストボタンから画像(DIV構成)ボタンを格納する枠に変更 -->
 <div class="promote-prompt" id="promotePrompt">
-  <span>成りますか？</span>
-  <button class="action" id="promoteStayBtn" type="button">そのまま</button>
-  <button class="action" id="promotePromoteBtn" type="button">成る</button>
+  <div class="promote-btn" id="promoteStayBtn" title="そのまま"></div>
+  <div class="promote-btn" id="promotePromoteBtn" title="成る"></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -605,7 +626,6 @@
     }
     const clicked = board[r][c];
 
-    // dropping a hand piece
     if(dropSelection){
       const {owner,type} = dropSelection;
       if(clicked){
@@ -811,17 +831,40 @@
     }
   }
 
+  /* 修正3: 「成る」UIの中身を画像化し、対象マスの直上に配置する */
   function updatePromotePrompt(){
     if(lastMovedForPromotionOffer){
       const {r,c} = lastMovedForPromotionOffer;
       const p = board[r] && board[r][c];
       if(p && isMine(p.owner)){
         const key = p.type;
-        const promotedGlyph = KANJI['+'+key] || KANJI[key];
-        promoteStayBtn.textContent = KANJI[key] + 'のまま';
-        promotePromoteBtn.textContent = promotedGlyph + 'に成る';
+        const promotedKey = '+' + key;
+        const baseGlyph = KANJI[key];
+        const promotedGlyph = KANJI[promotedKey] || KANJI[key];
+
+        // 実際の駒UI（画像相当）をHTMLで構築
+        promoteStayBtn.innerHTML = `
+          <div class="piece owner-${p.owner}">
+            <div class="pent">${baseGlyph}</div>
+          </div>
+        `;
+        promotePromoteBtn.innerHTML = `
+          <div class="piece owner-${p.owner}">
+            <div class="pent" style="color:var(--accent);">${promotedGlyph}</div>
+          </div>
+        `;
+
         promotePrompt.dataset.r = r;
         promotePrompt.dataset.c = c;
+
+        // 対象マスの座標を取得して直上に配置
+        const cell = cells[r][c];
+        const rect = cell.getBoundingClientRect();
+        
+        promotePrompt.style.left = (rect.left + rect.width / 2) + 'px';
+        promotePrompt.style.top = (rect.top - 5) + 'px';
+        promotePrompt.style.transform = 'translate(-50%, -100%)';
+
         promotePrompt.classList.add('show');
         return;
       }
@@ -884,7 +927,15 @@
       let needsRender=false;
       for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
         const p=board[r][c];
-        if(p && p.cooldownUntil>0 && p.cooldownUntil>now()){ needsRender=true; }
+        if(p && p.cooldownUntil>0){
+          /* 修正1: クールタイム終了時にタイマーを0にリセットし、UIを更新する処理を追加 */
+          if(p.cooldownUntil>now()){
+            needsRender=true;
+          } else {
+            p.cooldownUntil = 0; // 終了を確定
+            needsRender=true;    // リセット状態を描画させる
+          }
+        }
       }
       if(needsRender) renderBoard();
     }
@@ -961,7 +1012,6 @@
       case 'move': {
         const {sr,sc,dr,dc,owner} = action;
         const p = board[sr] && board[sr][sc];
-        // クールダウンチェックは操作対象の駒のみ行う
         if(!p || p.owner!==owner || isCooling(p)) return false;
         if(requireActor && p.owner!==actorColor) return false;
         const legal = legalMovesFor(sr,sc,board).some(m=>m.r===dr&&m.c===dc);
@@ -1055,7 +1105,6 @@
     if(state.readyState) readyState = {sente:!!state.readyState.sente, gote:!!state.readyState.gote};
     countdownUntil = state.countdownRemain>0 ? now()+state.countdownRemain : 0;
     
-    // 対局が開始された瞬間に将棋盤の位置・向きのずれを解消
     if(!wasMatchStarted && matchStarted){
       buildBoardDom();
     }
