@@ -348,8 +348,8 @@
   }
   .promote-prompt.show{display:flex;}
   .promote-btn{
-    width: 48px;
-    height: 52px;
+    width: 58px;
+    height: 62px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -363,12 +363,12 @@
   }
   /* ボタン内部に配置する駒要素の調整 */
   .promote-btn .piece {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
     pointer-events: none; /* クリックイベントは親の.promote-btnで受ける */
   }
   .promote-btn .pent {
-    font-size: 1.1rem;
+    font-size: 1.32rem;
   }
 </style>
 </head>
@@ -947,7 +947,7 @@
     if(countdownUntil>0 && !matchStarted){
       const remain = countdownUntil-now();
       const secs = Math.max(1, Math.ceil(remain/1000));
-      countdownStatusEl.textContent = '対局開始まで '+secs+'…';
+      countdownStatusEl.textContent = secs + '秒';
       countdownStatusEl.style.display = 'block';
     } else {
       countdownStatusEl.style.display = 'none';
@@ -984,7 +984,7 @@
     if(!boardFrame) return;
     let usedHeight = 0;
     Array.from(battleScreen.children).forEach(el=>{
-      if(el===boardFrame) return;
+      if(el===boardFrame || el.id==='countdownStatus') return;
       const rect = el.getBoundingClientRect();
       if(rect.height>0) usedHeight += rect.height;
     });
