@@ -1001,12 +1001,17 @@
     const boardFrame = battleScreen.querySelector('.board-frame');
     if(!boardFrame) return;
     let usedHeight = 0;
+    let flowCount = 0;
     Array.from(battleScreen.children).forEach(el=>{
       if(el===boardFrame) return;
+      // 修正6: position:absolute/fixedの要素（カウントダウン表示など）は
+      // ドキュメントフロー上の高さを持たないため、盤サイズ計算から除外する
+      const cs = getComputedStyle(el);
+      if(cs.position==='absolute' || cs.position==='fixed') return;
       const rect = el.getBoundingClientRect();
-      if(rect.height>0) usedHeight += rect.height;
+      if(rect.height>0){ usedHeight += rect.height; flowCount++; }
     });
-    const gapPx = 10 * Math.max(0, battleScreen.children.length-1);
+    const gapPx = 10 * flowCount;
     const wrapPadding = 42;
     const framePadding = 20;
     const availableHeight = window.innerHeight - usedHeight - gapPx - wrapPadding - framePadding;
