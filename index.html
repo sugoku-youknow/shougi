@@ -215,6 +215,15 @@
   #readyRow.visible{
     visibility:visible;
   }
+  /* 修正5: battleStatusの文言が対局開始前後で長さが変わり、
+     折り返し行数が変化して盤がずれるため、常に2行分の高さを確保する */
+  #battleStatus{
+    min-height:2.8em;
+    line-height:1.4;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
   .board-frame{order:0;}
   #handGote{order:-1;}
   #handSente{order:1;}
