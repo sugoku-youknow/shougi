@@ -348,8 +348,8 @@
   }
   .promote-prompt.show{display:flex;}
   .promote-btn{
-    width: 58px;
-    height: 62px;
+    width: 48px;
+    height: 52px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -363,12 +363,12 @@
   }
   /* ボタン内部に配置する駒要素の調整 */
   .promote-btn .piece {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     pointer-events: none; /* クリックイベントは親の.promote-btnで受ける */
   }
   .promote-btn .pent {
-    font-size: 1.32rem;
+    font-size: 1.1rem;
   }
 </style>
 </head>
@@ -947,7 +947,7 @@
     if(countdownUntil>0 && !matchStarted){
       const remain = countdownUntil-now();
       const secs = Math.max(1, Math.ceil(remain/1000));
-      countdownStatusEl.textContent = secs + '秒';
+      countdownStatusEl.textContent = '対局開始まで '+secs+'…';
       countdownStatusEl.style.display = 'block';
     } else {
       countdownStatusEl.style.display = 'none';
@@ -984,7 +984,7 @@
     if(!boardFrame) return;
     let usedHeight = 0;
     Array.from(battleScreen.children).forEach(el=>{
-      if(el===boardFrame || el.id==='countdownStatus') return;
+      if(el===boardFrame) return;
       const rect = el.getBoundingClientRect();
       if(rect.height>0) usedHeight += rect.height;
     });
@@ -1191,14 +1191,23 @@
   }
 
   function updateReadyUI(){
+    // 準備完了欄そのものは常にレイアウト上に残す
+    readyRow.style.display = 'flex';
+
     if(!colorAssigned || matchStarted || countdownUntil>0){
-      readyRow.style.display = 'none';
+      // 見えなくするだけで、スペースは残す
+      readyRow.style.visibility = 'hidden';
+      readyBtn.disabled = true;
       return;
     }
-    readyRow.style.display = 'flex';
+
+    readyRow.style.visibility = 'visible';
+
     const already = readyState[myColor];
     readyBtn.disabled = already;
-    readyBtn.textContent = already ? '準備完了（相手を待っています）' : '準備完了';
+    readyBtn.textContent = already
+      ? '準備完了（相手を待っています）'
+      : '準備完了';
   }
 
   function generateRoomNumber(){
